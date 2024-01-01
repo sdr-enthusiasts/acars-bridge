@@ -1,5 +1,5 @@
-use std::error::Error;
-
+use anyhow::Error;
+use anyhow::Result;
 use async_trait::async_trait;
 use tokio::sync::mpsc::{Receiver, Sender};
 
@@ -55,7 +55,7 @@ pub trait InputServer {
         port: u16,
         sender: Sender<String>,
         stats: Sender<u8>,
-    ) -> Result<Self, Box<dyn Error>>
+    ) -> Result<Self, Error>
     where
         Self: Sized;
     async fn receive_message(self);
@@ -63,7 +63,7 @@ pub trait InputServer {
 
 #[async_trait]
 pub trait OutputServer {
-    async fn new(host: &str, port: u16, receiver: Receiver<String>) -> Result<Self, Box<dyn Error>>
+    async fn new(host: &str, port: u16, receiver: Receiver<String>) -> Result<Self, Error>
     where
         Self: Sized;
     async fn watch_queue(self);

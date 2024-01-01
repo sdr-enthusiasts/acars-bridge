@@ -1,9 +1,8 @@
-use std::error::Error;
-
 use crate::serverconfig::InputServer;
 use crate::serverconfig::InputServerOptions;
 use crate::serverconfig::OutputServer;
 use crate::serverconfig::OutputServerOptions;
+use anyhow::{Error, Result};
 use async_trait::async_trait;
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -15,7 +14,7 @@ impl InputServer for InputServerOptions<UdpSocket> {
         port: u16,
         sender: Sender<String>,
         stats: Sender<u8>,
-    ) -> Result<Self, Box<dyn Error>> {
+    ) -> Result<Self, Error> {
         let socket = UdpSocket::bind(format!("{}:{}", host, port)).await?;
         Ok(InputServerOptions {
             proto_name: "udp".to_string(),
@@ -69,11 +68,7 @@ impl InputServer for InputServerOptions<UdpSocket> {
 
 #[async_trait]
 impl OutputServer for OutputServerOptions<UdpSocket> {
-    async fn new(
-        host: &str,
-        port: u16,
-        receiver: Receiver<String>,
-    ) -> Result<Self, Box<dyn Error>> {
+    async fn new(host: &str, port: u16, receiver: Receiver<String>) -> Result<Self, Error> {
         let socket = UdpSocket::bind("0.0.0.0:0".to_string()).await?;
         Ok(OutputServerOptions {
             proto_name: format!("UDP:{}:{}", host, port),

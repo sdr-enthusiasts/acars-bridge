@@ -7,6 +7,7 @@ pub mod stats;
 
 pub mod tcp;
 pub mod udp;
+pub mod zmq;
 
 use clap::Parser;
 use sdre_stubborn_io::tokio::StubbornIo;
@@ -16,12 +17,12 @@ use tokio::sync::mpsc;
 
 use crate::config::Config;
 use crate::serverconfig::{InputServer, OutputServer, OutputServerOptions, SocketType};
+use anyhow::Result;
 use sdre_rust_logging::SetupLogging;
-use std::error::Error;
 use std::net::SocketAddr;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<()> {
     let config: Config = Config::parse();
     config.get_log_level().enable_logging();
     config.show_config();

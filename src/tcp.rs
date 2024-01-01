@@ -3,6 +3,7 @@ use sdre_stubborn_io::config::DurationIterator;
 use sdre_stubborn_io::tokio::StubbornIo;
 use sdre_stubborn_io::ReconnectOptions;
 use sdre_stubborn_io::StubbornTcpStream;
+
 use std::net::SocketAddr;
 use tokio::io::AsyncWriteExt;
 use tokio_stream::StreamExt;
@@ -13,7 +14,7 @@ use crate::serverconfig::InputServerOptions;
 use crate::serverconfig::OutputServer;
 use crate::serverconfig::OutputServerOptions;
 
-use std::error::Error;
+use anyhow::{Error, Result};
 use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -25,7 +26,7 @@ impl InputServer for InputServerOptions<StubbornIo<TcpStream, SocketAddr>> {
         port: u16,
         sender: Sender<String>,
         stats: Sender<u8>,
-    ) -> Result<InputServerOptions<StubbornIo<TcpStream, SocketAddr>>, Box<dyn Error>> {
+    ) -> Result<Self, Error> {
         let addr = match host.parse::<SocketAddr>() {
             Ok(addr) => addr,
             Err(e) => {
@@ -98,11 +99,7 @@ impl InputServer for InputServerOptions<StubbornIo<TcpStream, SocketAddr>> {
 
 #[async_trait]
 impl OutputServer for OutputServerOptions<StubbornIo<TcpStream, SocketAddr>> {
-    async fn new(
-        host: &str,
-        port: u16,
-        receiver: Receiver<String>,
-    ) -> Result<OutputServerOptions<StubbornIo<TcpStream, SocketAddr>>, Box<dyn Error>> {
+    async fn new(host: &str, port: u16, receiver: Receiver<String>) -> Result<Self, Error> {
         let addr = match host.parse::<SocketAddr>() {
             Ok(addr) => addr,
             Err(e) => {
