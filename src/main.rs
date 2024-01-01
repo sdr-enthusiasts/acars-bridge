@@ -5,6 +5,7 @@ pub mod config;
 pub mod serverconfig;
 pub mod stats;
 
+pub mod tcp;
 pub mod udp;
 
 use clap::Parser;
