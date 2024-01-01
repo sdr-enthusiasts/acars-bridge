@@ -21,6 +21,8 @@ use sdre_rust_logging::SetupLogging;
 use sdre_stubborn_io::tokio::StubbornIo;
 use serverconfig::InputServerOptions;
 use std::net::SocketAddr;
+use tmq::publish::Publish;
+use tmq::subscribe::Subscribe;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 
@@ -76,7 +78,17 @@ async fn main() -> Result<()> {
             });
         }
         SocketType::Zmq => {
-            unimplemented!("ZMQ not implemented yet")
+            let input_server = InputServerOptions::<Subscribe>::new(
+                config.get_source_host(),
+                config.get_source_port(),
+                input,
+                stats_input,
+            )
+            .await?;
+
+            tokio::spawn(async move {
+                input_server.receive_message().await;
+            });
         }
     }
 
@@ -108,7 +120,12 @@ async fn main() -> Result<()> {
                         });
                     }
                     SocketType::Zmq => {
-                        unimplemented!("ZMQ not implemented yet")
+                        let output_server =
+                            OutputServerOptions::<Publish>::new(host, port, output).await?;
+
+                        tokio::spawn(async move {
+                            output_server.watch_queue().await;
+                        });
                     }
                 }
             }
