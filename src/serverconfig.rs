@@ -17,6 +17,17 @@ impl From<&str> for SocketType {
     }
 }
 
+impl From<&String> for SocketType {
+    fn from(s: &String) -> Self {
+        match s.to_lowercase().as_str() {
+            "tcp" => SocketType::Tcp,
+            "udp" => SocketType::Udp,
+            "zmq" => SocketType::Zmq,
+            _ => panic!("Unknown Socket Type: {}", s),
+        }
+    }
+}
+
 pub struct InputServer<T> {
     pub proto_name: String,
     pub host: String,

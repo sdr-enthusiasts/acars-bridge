@@ -61,24 +61,27 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // create the output server
 
-    match config.get_destination_protocol().into() {
-        SocketType::Tcp => {
-            unimplemented!("TCP not implemented yet")
-        }
-        SocketType::Udp => {
-            let mut output_server = OutputServer::<tokio::net::UdpSocket>::new(
-                config.get_destination_host(),
-                config.get_destination_port(),
-                output,
-            )
-            .await?;
+    if let Some(host) = config.get_destination_host() {
+        if let Some(port) = config.get_destination_port() {
+            if let Some(proto) = config.get_destination_protocol() {
+                info!("Creating output server");
+                match proto.into() {
+                    SocketType::Tcp => {
+                        unimplemented!("TCP not implemented yet")
+                    }
+                    SocketType::Udp => {
+                        let mut output_server =
+                            OutputServer::<tokio::net::UdpSocket>::new(host, port, output).await?;
 
-            tokio::spawn(async move {
-                output_server.watch_queue().await;
-            });
-        }
-        SocketType::Zmq => {
-            unimplemented!("ZMQ not implemented yet")
+                        tokio::spawn(async move {
+                            output_server.watch_queue().await;
+                        });
+                    }
+                    SocketType::Zmq => {
+                        unimplemented!("ZMQ not implemented yet")
+                    }
+                }
+            }
         }
     }
 

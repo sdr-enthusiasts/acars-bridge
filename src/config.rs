@@ -10,7 +10,7 @@ pub struct Config {
     #[clap(long, env = "AB_LOG_LEVEL", default_value = "info")]
     pub log_level: String,
 
-    #[clap(long, env = "AB_SOURCE", default_value = "localhost")]
+    #[clap(long, env = "AB_SOURCE", required = true, requires_all = &["source_port", "source_protocol"])]
     pub source_host: String,
 
     #[clap(long, env = "AB_SOURCE_PORT")]
@@ -19,14 +19,14 @@ pub struct Config {
     #[clap(long, env = "AB_SOURCE_PROTOCOL")]
     pub source_protocol: String,
 
-    #[clap(long, env = "AB_DESTINATION", default_value = "acars_router")]
-    pub destination_host: String,
+    #[clap(long, env = "AB_DESTINATION", requires_all = &["destination_port", "destination_protocol"])]
+    pub destination_host: Option<String>,
 
     #[clap(long, env = "AB_DESTINATION_PORT")]
-    pub destination_port: u16,
+    pub destination_port: Option<u16>,
 
-    #[clap(long, env = "AB_DESTINATION_PROTOCOL", default_value = "zmq")]
-    pub destination_protocol: String,
+    #[clap(long, env = "AB_DESTINATION_PROTOCOL")]
+    pub destination_protocol: Option<String>,
 
     #[clap(long, env = "AB_STAT_INTERVAL", default_value = "5")]
     pub stat_interval: u64,
@@ -38,9 +38,9 @@ impl Config {
         info!("Source Host: {}", self.source_host);
         info!("Source Port: {}", self.source_port);
         info!("Source Protocol: {}", self.source_protocol);
-        info!("Destination Host: {}", self.destination_host);
-        info!("Destination Port: {}", self.destination_port);
-        info!("Destination Protocol: {}", self.destination_protocol);
+        info!("Destination Host: {:?}", self.destination_host);
+        info!("Destination Port: {:?}", self.destination_port);
+        info!("Destination Protocol: {:?}", self.destination_protocol);
         info!("Stat Interval: {}", self.stat_interval);
     }
 
@@ -60,15 +60,15 @@ impl Config {
         &self.source_protocol
     }
 
-    pub fn get_destination_host(&self) -> &str {
+    pub fn get_destination_host(&self) -> &Option<String> {
         &self.destination_host
     }
 
-    pub fn get_destination_port(&self) -> u16 {
+    pub fn get_destination_port(&self) -> Option<u16> {
         self.destination_port
     }
 
-    pub fn get_destination_protocol(&self) -> &str {
+    pub fn get_destination_protocol(&self) -> &Option<String> {
         &self.destination_protocol
     }
 
