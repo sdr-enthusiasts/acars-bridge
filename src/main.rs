@@ -9,12 +9,16 @@ pub mod tcp;
 pub mod udp;
 
 use clap::Parser;
+use sdre_stubborn_io::tokio::StubbornIo;
+use serverconfig::InputServerOptions;
+use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 
 use crate::config::Config;
-use crate::serverconfig::{InputServer, OutputServer, SocketType};
+use crate::serverconfig::{InputServer, OutputServer, OutputServerOptions, SocketType};
 use sdre_rust_logging::SetupLogging;
 use std::error::Error;
+use std::net::SocketAddr;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -39,10 +43,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     match config.get_source_protocol().into() {
         SocketType::Tcp => {
-            unimplemented!("TCP not implemented yet")
+            let input_server = InputServerOptions::<StubbornIo<TcpStream, SocketAddr>>::new(
+                config.get_source_host(),
+                config.get_source_port(),
+                input,
+                stats_input,
+            )
+            .await?;
+
+            tokio::spawn(async move {
+                input_server.receive_message().await;
+            });
         }
         SocketType::Udp => {
-            let input_server = InputServer::<tokio::net::UdpSocket>::new(
+            let input_server = InputServerOptions::<tokio::net::UdpSocket>::new(
                 config.get_source_host(),
                 config.get_source_port(),
                 input,
@@ -67,11 +81,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 info!("Creating output server");
                 match proto.into() {
                     SocketType::Tcp => {
-                        unimplemented!("TCP not implemented yet")
+                        let output_server =
+                            OutputServerOptions::<StubbornIo<TcpStream, SocketAddr>>::new(
+                                host, port, output,
+                            )
+                            .await?;
+
+                        tokio::spawn(async move {
+                            output_server.watch_queue().await;
+                        });
                     }
                     SocketType::Udp => {
-                        let mut output_server =
-                            OutputServer::<tokio::net::UdpSocket>::new(host, port, output).await?;
+                        let output_server =
+                            OutputServerOptions::<tokio::net::UdpSocket>::new(host, port, output)
+                                .await?;
 
                         tokio::spawn(async move {
                             output_server.watch_queue().await;

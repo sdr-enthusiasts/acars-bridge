@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use sdre_stubborn_io::config::DurationIterator;
 use sdre_stubborn_io::tokio::StubbornIo;
 use sdre_stubborn_io::ReconnectOptions;
@@ -8,20 +9,23 @@ use tokio_stream::StreamExt;
 use tokio_util::codec::{Framed, LinesCodec};
 
 use crate::serverconfig::InputServer;
+use crate::serverconfig::InputServerOptions;
 use crate::serverconfig::OutputServer;
+use crate::serverconfig::OutputServerOptions;
 
 use std::error::Error;
 use std::time::Duration;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpStream;
 use tokio::sync::mpsc::{Receiver, Sender};
 
-impl InputServer<StubbornIo<TcpStream, SocketAddr>> {
-    pub async fn new(
+#[async_trait]
+impl InputServer for InputServerOptions<StubbornIo<TcpStream, SocketAddr>> {
+    async fn new(
         host: &str,
         port: u16,
         sender: Sender<String>,
         stats: Sender<u8>,
-    ) -> Result<InputServer<StubbornIo<TcpStream, SocketAddr>>, Box<dyn Error>> {
+    ) -> Result<InputServerOptions<StubbornIo<TcpStream, SocketAddr>>, Box<dyn Error>> {
         let addr = match host.parse::<SocketAddr>() {
             Ok(addr) => addr,
             Err(e) => {
@@ -47,7 +51,7 @@ impl InputServer<StubbornIo<TcpStream, SocketAddr>> {
         };
 
         // return self now
-        Ok(InputServer {
+        Ok(InputServerOptions {
             proto_name: "tcp".to_string(),
             host: host.to_string(),
             port,
@@ -57,7 +61,7 @@ impl InputServer<StubbornIo<TcpStream, SocketAddr>> {
         })
     }
 
-    pub async fn receive_message(self) {
+    async fn receive_message(self) {
         let reader = tokio::io::BufReader::new(self.socket);
         let mut lines = Framed::new(reader, LinesCodec::new());
         while let Some(Ok(line)) = lines.next().await {
@@ -92,12 +96,13 @@ impl InputServer<StubbornIo<TcpStream, SocketAddr>> {
     }
 }
 
-impl OutputServer<StubbornIo<TcpStream, SocketAddr>> {
-    pub async fn new(
+#[async_trait]
+impl OutputServer for OutputServerOptions<StubbornIo<TcpStream, SocketAddr>> {
+    async fn new(
         host: &str,
         port: u16,
         receiver: Receiver<String>,
-    ) -> Result<OutputServer<StubbornIo<TcpStream, SocketAddr>>, Box<dyn Error>> {
+    ) -> Result<OutputServerOptions<StubbornIo<TcpStream, SocketAddr>>, Box<dyn Error>> {
         let addr = match host.parse::<SocketAddr>() {
             Ok(addr) => addr,
             Err(e) => {
@@ -123,7 +128,7 @@ impl OutputServer<StubbornIo<TcpStream, SocketAddr>> {
         };
 
         // return self now
-        Ok(OutputServer {
+        Ok(OutputServerOptions {
             proto_name: "tcp".to_string(),
             host: host.to_string(),
             port,
@@ -132,7 +137,7 @@ impl OutputServer<StubbornIo<TcpStream, SocketAddr>> {
         })
     }
 
-    pub async fn send_message(mut self) {
+    async fn watch_queue(mut self) {
         let mut writer = tokio::io::BufWriter::new(self.socket);
         while let Some(line) = self.receiver.recv().await {
             trace!("[TCP SENDER SERVER {}] Received: {}", self.proto_name, line);

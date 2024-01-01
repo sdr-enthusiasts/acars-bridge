@@ -6,6 +6,8 @@ Small utility to bridge from the SDR-E ACARS/HFDL/VDL2 decoder containers to aca
 
 acars-bridge can be used to connect to a running SDR-E container and bridge the output to acars_router. It can accept input over UDP, TCP or ZMQ, and optionally output over UDP, TCP or ZMQ. It is a replacement for the TCP/UDP internal wiring that was used in the containers to both send data to acars_router (in the case of `acarsdec`/`vdlm2dec`) and to output stats to container logs.
 
+Note, bridge is only set up to actively connect to the source/destination, not to listen for incoming connections.
+
 ### Command line flags
 
 | Flag                     | Description                                                                    | Default |

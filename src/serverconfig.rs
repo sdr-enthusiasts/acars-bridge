@@ -1,3 +1,6 @@
+use std::error::Error;
+
+use async_trait::async_trait;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 pub enum SocketType {
@@ -28,7 +31,7 @@ impl From<&String> for SocketType {
     }
 }
 
-pub struct InputServer<T> {
+pub struct InputServerOptions<T> {
     pub proto_name: String,
     pub host: String,
     pub port: u16,
@@ -37,10 +40,31 @@ pub struct InputServer<T> {
     pub stats: Sender<u8>,
 }
 
-pub struct OutputServer<T> {
+pub struct OutputServerOptions<T> {
     pub proto_name: String,
     pub host: String,
     pub port: u16,
     pub socket: T,
     pub receiver: Receiver<String>,
+}
+
+#[async_trait]
+pub trait InputServer {
+    async fn new(
+        host: &str,
+        port: u16,
+        sender: Sender<String>,
+        stats: Sender<u8>,
+    ) -> Result<Self, Box<dyn Error>>
+    where
+        Self: Sized;
+    async fn receive_message(self);
+}
+
+#[async_trait]
+pub trait OutputServer {
+    async fn new(host: &str, port: u16, receiver: Receiver<String>) -> Result<Self, Box<dyn Error>>
+    where
+        Self: Sized;
+    async fn watch_queue(self);
 }

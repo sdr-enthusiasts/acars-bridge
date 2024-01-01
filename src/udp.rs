@@ -1,19 +1,23 @@
 use std::error::Error;
 
 use crate::serverconfig::InputServer;
+use crate::serverconfig::InputServerOptions;
 use crate::serverconfig::OutputServer;
+use crate::serverconfig::OutputServerOptions;
+use async_trait::async_trait;
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc::{Receiver, Sender};
 
-impl InputServer<UdpSocket> {
-    pub async fn new(
+#[async_trait]
+impl InputServer for InputServerOptions<UdpSocket> {
+    async fn new(
         host: &str,
         port: u16,
         sender: Sender<String>,
         stats: Sender<u8>,
     ) -> Result<Self, Box<dyn Error>> {
         let socket = UdpSocket::bind(format!("{}:{}", host, port)).await?;
-        Ok(InputServer {
+        Ok(InputServerOptions {
             proto_name: "udp".to_string(),
             host: host.to_string(),
             port,
@@ -23,7 +27,7 @@ impl InputServer<UdpSocket> {
         })
     }
 
-    pub async fn receive_message(self) {
+    async fn receive_message(self) {
         let mut buf = [0; 8192];
         loop {
             match self.socket.recv_from(&mut buf).await {
@@ -63,14 +67,15 @@ impl InputServer<UdpSocket> {
     }
 }
 
-impl OutputServer<UdpSocket> {
-    pub async fn new(
+#[async_trait]
+impl OutputServer for OutputServerOptions<UdpSocket> {
+    async fn new(
         host: &str,
         port: u16,
         receiver: Receiver<String>,
     ) -> Result<Self, Box<dyn Error>> {
         let socket = UdpSocket::bind("0.0.0.0:0".to_string()).await?;
-        Ok(OutputServer {
+        Ok(OutputServerOptions {
             proto_name: format!("UDP:{}:{}", host, port),
             host: host.to_string(),
             port,
@@ -79,7 +84,7 @@ impl OutputServer<UdpSocket> {
         })
     }
 
-    pub async fn watch_queue(&mut self) {
+    async fn watch_queue(mut self) {
         let max_size = 8192;
         loop {
             match self.receiver.recv().await {
