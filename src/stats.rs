@@ -1,0 +1,86 @@
+use std::sync::Arc;
+use tokio::sync::mpsc::Receiver;
+use tokio::sync::Mutex;
+// A struct to hold the stats
+
+pub struct Stats {
+    pub total_all_time: Arc<Mutex<u64>>,
+    pub total_since_last: Arc<Mutex<u64>>,
+    receiver: Receiver<u8>,
+}
+
+impl Stats {
+    pub fn new(receiver: Receiver<u8>) -> Self {
+        // wrap the stats in an Arc<Mutex<Stats>> to allow for multiple threads to access it
+        Stats {
+            total_all_time: Arc::new(Mutex::new(0)),
+            total_since_last: Arc::new(Mutex::new(0)),
+            receiver,
+        }
+    }
+
+    pub async fn run(mut self, print_interval: u64) {
+        // clone the Arc<Mutex<Stats>> so we can pass it to the print_stats function
+        let total_all_time_context = self.total_all_time.clone();
+        let total_since_last_context = self.total_since_last.clone();
+
+        tokio::spawn(async move {
+            print_stats(
+                total_all_time_context,
+                total_since_last_context,
+                print_interval,
+            )
+            .await;
+        });
+
+        tokio::spawn(async move {
+            self.watch_message_queue().await;
+        });
+    }
+
+    pub async fn watch_message_queue(&mut self) {
+        loop {
+            match self.receiver.recv().await {
+                Some(_) => {
+                    self.increment().await;
+                }
+                None => {
+                    error!("[STATS] Error receiving message from queue");
+                }
+            }
+        }
+    }
+
+    pub async fn increment(&mut self) {
+        *self.total_all_time.lock().await += 1;
+        *self.total_since_last.lock().await += 1;
+    }
+
+    pub async fn get_total_all_time(&self) -> u64 {
+        *self.total_all_time.lock().await
+    }
+
+    pub async fn get_total_last_interval(&self) -> u64 {
+        *self.total_since_last.lock().await
+    }
+}
+
+pub async fn print_stats(
+    total_all_time_context: Arc<Mutex<u64>>,
+    total_since_last_context: Arc<Mutex<u64>>,
+    print_interval: u64,
+) {
+    loop {
+        // print interval is in minutes, so we need to convert it to seconds
+        let print_interval = print_interval * 60;
+        tokio::time::sleep(tokio::time::Duration::from_secs(print_interval)).await;
+        let total_all_time = *total_all_time_context.lock().await;
+        let total_since_last = *total_since_last_context.lock().await;
+
+        info!("[STATS] Total All Time: {}", total_all_time);
+        info!("[STATS] Total Last Interval: {}", total_since_last);
+
+        // set the total_last_interval to 0
+        *total_since_last_context.lock().await = 0;
+    }
+}

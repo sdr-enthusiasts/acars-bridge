@@ -1,0 +1,12 @@
+[package]
+name = "acars-bridge"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+log = "0.4.20"
+tokio = { version = "1.35.0", features = ["full", "tracing"] }
+sdre-rust-logging = "0.2.0"
+clap = { version = "4.4.12", features = ["derive", "env"] }
