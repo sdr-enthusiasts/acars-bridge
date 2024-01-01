@@ -97,7 +97,7 @@ impl InputServer for InputServerOptions<Subscribe> {
 impl OutputServer for OutputServerOptions<Publish> {
     async fn new(host: &str, port: u16, receiver: Receiver<String>) -> Result<Self, Error> {
         let address = format!("tcp://{}:{}", host, port);
-        let socket = publish(&Context::new()).bind(&address)?;
+        let socket = publish(&Context::new()).connect(&address)?;
 
         Ok(OutputServerOptions {
             proto_name: "zmq".to_string(),
