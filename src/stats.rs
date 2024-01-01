@@ -1,3 +1,9 @@
+// Copyright (c) 2024 Fred Clausen
+//
+// Licensed under the MIT license: https://opensource.org/licenses/MIT
+// Permission is granted to use, copy, modify, and redistribute the work.
+// Full license information available in the project LICENSE file.
+
 use std::sync::Arc;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::Mutex;

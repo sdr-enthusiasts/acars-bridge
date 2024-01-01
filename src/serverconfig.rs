@@ -1,3 +1,9 @@
+// Copyright (c) 2024 Fred Clausen
+//
+// Licensed under the MIT license: https://opensource.org/licenses/MIT
+// Permission is granted to use, copy, modify, and redistribute the work.
+// Full license information available in the project LICENSE file.
+
 use anyhow::Error;
 use anyhow::Result;
 use async_trait::async_trait;
