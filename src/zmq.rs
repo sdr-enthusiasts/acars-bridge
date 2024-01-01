@@ -78,6 +78,17 @@ impl InputServer for InputServerOptions<Subscribe> {
                     self.proto_name, e
                 ),
             }
+
+            match self.stats.send(1).await {
+                Ok(_) => trace!(
+                    "[ZMQ RECEIVER SERVER {}] Stats sent to channel",
+                    self.proto_name
+                ),
+                Err(e) => error!(
+                    "[ZMQ RECEIVER SERVER {}] Error sending stats to channel: {}",
+                    self.proto_name, e
+                ),
+            }
         }
     }
 }

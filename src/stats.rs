@@ -30,6 +30,7 @@ impl Stats {
         let total_all_time_context = self.total_all_time.clone();
         let total_since_last_context = self.total_since_last.clone();
 
+        trace!("Starting stats thread");
         tokio::spawn(async move {
             print_stats(
                 total_all_time_context,
@@ -48,6 +49,7 @@ impl Stats {
         loop {
             match self.receiver.recv().await {
                 Some(_) => {
+                    trace!("[STATS] Received message from queue");
                     self.increment().await;
                 }
                 None => {
