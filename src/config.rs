@@ -37,14 +37,15 @@ pub struct Config {
 
 impl Config {
     pub fn show_config(&self) {
-        info!("Log Level: {}", self.log_level);
-        info!("Source Host: {}", self.source_host);
-        info!("Source Port: {}", self.source_port);
-        info!("Source Protocol: {}", self.source_protocol);
-        info!("Destination Host: {:?}", self.destination_host);
-        info!("Destination Port: {:?}", self.destination_port);
-        info!("Destination Protocol: {:?}", self.destination_protocol);
-        info!("Stat Interval: {}", self.stat_interval);
+        debug!("Log Level: {}", self.log_level);
+        debug!("Source Host: {}", self.source_host);
+        debug!("Source Port: {}", self.source_port);
+        debug!("Source Port: {}", self.source_port);
+        debug!("Source Protocol: {}", self.source_protocol);
+        debug!("Destination Host: {:?}", self.destination_host);
+        debug!("Destination Port: {:?}", self.destination_port);
+        debug!("Destination Protocol: {:?}", self.destination_protocol);
+        debug!("Stat Interval: {}", self.stat_interval);
     }
 
     pub fn get_log_level(&self) -> &str {

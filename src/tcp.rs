@@ -10,7 +10,6 @@ use sdre_stubborn_io::config::DurationIterator;
 use sdre_stubborn_io::tokio::StubbornIo;
 use sdre_stubborn_io::ReconnectOptions;
 use sdre_stubborn_io::StubbornTcpStream;
-use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
@@ -24,23 +23,15 @@ use crate::serverconfig::OutputServer;
 use crate::serverconfig::OutputServerOptions;
 
 #[async_trait]
-impl InputServer for InputServerOptions<StubbornIo<TcpStream, SocketAddr>> {
+impl InputServer for InputServerOptions<StubbornIo<TcpStream, String>> {
     async fn new(
         host: &str,
         port: u16,
         sender: Sender<String>,
         stats: Sender<u8>,
     ) -> Result<Self, Error> {
-        let addr = match format!("{}:{}", host, port).parse::<SocketAddr>() {
-            Ok(addr) => addr,
-            Err(e) => {
-                error!("[TCP INPUT {}:{}] Error parsing host: {}", host, port, e);
-                Err(e)?
-            }
-        };
-
         let stream = match StubbornTcpStream::connect_with_options(
-            addr,
+            format!("{}:{}", host, port),
             reconnect_options(format!("{}:{}", host, port).as_str()),
         )
         .await
@@ -102,18 +93,10 @@ impl InputServer for InputServerOptions<StubbornIo<TcpStream, SocketAddr>> {
 }
 
 #[async_trait]
-impl OutputServer for OutputServerOptions<StubbornIo<TcpStream, SocketAddr>> {
+impl OutputServer for OutputServerOptions<StubbornIo<TcpStream, String>> {
     async fn new(host: &str, port: u16, receiver: Receiver<String>) -> Result<Self, Error> {
-        let addr = match format!("{}:{}", host, port).parse::<SocketAddr>() {
-            Ok(addr) => addr,
-            Err(e) => {
-                error!("[TCP OUTPUT {}:{}] Error parsing host: {}", host, port, e);
-                Err(e)?
-            }
-        };
-
         let stream = match StubbornTcpStream::connect_with_options(
-            addr,
+            format!("{}:{}", host, port),
             reconnect_options(format!("{}:{}", host, port).as_str()),
         )
         .await

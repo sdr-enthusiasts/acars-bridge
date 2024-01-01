@@ -20,7 +20,6 @@ use clap::Parser;
 use sdre_rust_logging::SetupLogging;
 use sdre_stubborn_io::tokio::StubbornIo;
 use serverconfig::InputServerOptions;
-use std::net::SocketAddr;
 use tmq::publish::Publish;
 use tmq::subscribe::Subscribe;
 use tokio::net::TcpStream;
@@ -50,9 +49,10 @@ async fn main() -> Result<()> {
     });
     // create the input server
 
+    info!("Creating input server");
     match config.get_source_protocol().into() {
         SocketType::Tcp => {
-            let input_server = InputServerOptions::<StubbornIo<TcpStream, SocketAddr>>::new(
+            let input_server = InputServerOptions::<StubbornIo<TcpStream, String>>::new(
                 config.get_source_host(),
                 config.get_source_port(),
                 input,
@@ -101,7 +101,7 @@ async fn main() -> Result<()> {
                 match proto.into() {
                     SocketType::Tcp => {
                         let output_server =
-                            OutputServerOptions::<StubbornIo<TcpStream, SocketAddr>>::new(
+                            OutputServerOptions::<StubbornIo<TcpStream, String>>::new(
                                 host, port, output,
                             )
                             .await?;
