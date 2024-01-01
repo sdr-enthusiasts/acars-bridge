@@ -4,14 +4,17 @@
 // Permission is granted to use, copy, modify, and redistribute the work.
 // Full license information available in the project LICENSE file.
 
+use anyhow::{Error, Result};
 use async_trait::async_trait;
 use sdre_stubborn_io::config::DurationIterator;
 use sdre_stubborn_io::tokio::StubbornIo;
 use sdre_stubborn_io::ReconnectOptions;
 use sdre_stubborn_io::StubbornTcpStream;
-
 use std::net::SocketAddr;
+use std::time::Duration;
 use tokio::io::AsyncWriteExt;
+use tokio::net::TcpStream;
+use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_stream::StreamExt;
 use tokio_util::codec::{Framed, LinesCodec};
 
@@ -19,11 +22,6 @@ use crate::serverconfig::InputServer;
 use crate::serverconfig::InputServerOptions;
 use crate::serverconfig::OutputServer;
 use crate::serverconfig::OutputServerOptions;
-
-use anyhow::{Error, Result};
-use std::time::Duration;
-use tokio::net::TcpStream;
-use tokio::sync::mpsc::{Receiver, Sender};
 
 #[async_trait]
 impl InputServer for InputServerOptions<StubbornIo<TcpStream, SocketAddr>> {

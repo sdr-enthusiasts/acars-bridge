@@ -6,12 +6,13 @@ use crate::serverconfig::InputServerOptions;
 // Permission is granted to use, copy, modify, and redistribute the work.
 // Full license information available in the project LICENSE file.
 
-use crate::serverconfig::OutputServer;
-use crate::serverconfig::OutputServerOptions;
 use anyhow::{Error, Result};
 use async_trait::async_trait;
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc::{Receiver, Sender};
+
+use crate::serverconfig::OutputServer;
+use crate::serverconfig::OutputServerOptions;
 
 #[async_trait]
 impl InputServer for InputServerOptions<UdpSocket> {

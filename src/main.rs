@@ -15,17 +15,17 @@ pub mod tcp;
 pub mod udp;
 pub mod zmq;
 
+use anyhow::Result;
 use clap::Parser;
+use sdre_rust_logging::SetupLogging;
 use sdre_stubborn_io::tokio::StubbornIo;
 use serverconfig::InputServerOptions;
+use std::net::SocketAddr;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 
 use crate::config::Config;
 use crate::serverconfig::{InputServer, OutputServer, OutputServerOptions, SocketType};
-use anyhow::Result;
-use sdre_rust_logging::SetupLogging;
-use std::net::SocketAddr;
 
 #[tokio::main]
 async fn main() -> Result<()> {
