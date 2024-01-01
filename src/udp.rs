@@ -92,6 +92,12 @@ impl OutputServer for OutputServerOptions<UdpSocket> {
             match self.receiver.recv().await {
                 Some(message) => {
                     // convert string to bytes
+                    // verify we have a newline
+                    let message = if message.ends_with('\n') {
+                        message
+                    } else {
+                        format!("{}\n", message)
+                    };
                     let bytes = message.as_bytes();
                     // send bytes to destination. If the message is larger than the max size, send up to max size and keep sending until the entire message is sent.
                     let mut offset = 0;

@@ -31,7 +31,7 @@ impl InputServer for InputServerOptions<StubbornIo<TcpStream, SocketAddr>> {
         sender: Sender<String>,
         stats: Sender<u8>,
     ) -> Result<Self, Error> {
-        let addr = match host.parse::<SocketAddr>() {
+        let addr = match format!("{}:{}", host, port).parse::<SocketAddr>() {
             Ok(addr) => addr,
             Err(e) => {
                 error!("[TCP INPUT {}:{}] Error parsing host: {}", host, port, e);
@@ -104,7 +104,7 @@ impl InputServer for InputServerOptions<StubbornIo<TcpStream, SocketAddr>> {
 #[async_trait]
 impl OutputServer for OutputServerOptions<StubbornIo<TcpStream, SocketAddr>> {
     async fn new(host: &str, port: u16, receiver: Receiver<String>) -> Result<Self, Error> {
-        let addr = match host.parse::<SocketAddr>() {
+        let addr = match format!("{}:{}", host, port).parse::<SocketAddr>() {
             Ok(addr) => addr,
             Err(e) => {
                 error!("[TCP OUTPUT {}:{}] Error parsing host: {}", host, port, e);
@@ -142,6 +142,13 @@ impl OutputServer for OutputServerOptions<StubbornIo<TcpStream, SocketAddr>> {
         let mut writer = tokio::io::BufWriter::new(self.socket);
         while let Some(line) = self.receiver.recv().await {
             trace!("[TCP SENDER SERVER {}] Received: {}", self.proto_name, line);
+
+            // verify we have a newline
+            let line = if line.ends_with('\n') {
+                line
+            } else {
+                format!("{}\n", line)
+            };
 
             match writer.write_all(line.as_bytes()).await {
                 Ok(_) => trace!(
