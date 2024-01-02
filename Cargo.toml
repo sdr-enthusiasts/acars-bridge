@@ -13,7 +13,7 @@ tokio-stream = "0.1.14"
 sdre-rust-logging = "0.2.0"
 clap = { version = "4.4.12", features = ["derive", "env"] }
 sdre-stubborn-io = { git = "https://github.com/sdr-enthusiasts/sdre-stubborn-io", branch = "fix-io-disconnect" }
-async-trait = "0.1.76"
+async-trait = "0.1.77"
 zmq = "0.10.0"
 tmq = "0.4.0"
 futures = "0.3.30"
