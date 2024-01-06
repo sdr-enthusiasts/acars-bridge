@@ -119,11 +119,11 @@ impl OutputServer for OutputServerOptions<Publish> {
             );
 
             // verify we have a newline
-            let message = if message.ends_with('\n') {
-                message
-            } else {
-                format!("{}\n", message)
-            };
+            // let message = if message.ends_with('\n') {
+            //     message
+            // } else {
+            //     format!("{}\n", message)
+            // };
 
             let message_zmq = vec!["acars", &message];
 
