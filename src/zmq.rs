@@ -127,6 +127,9 @@ impl OutputServer for OutputServerOptions<Publish> {
 
             let message_zmq = vec!["acars", &message];
 
+            debug!("Message: {:?}", message_zmq);
+            debug!("Original: {}", message);
+
             match self.socket.send(message_zmq).await {
                 Ok(_) => trace!(
                     "[ZMQ SENDER SERVER {}] Message sent to channel",
