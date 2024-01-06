@@ -68,6 +68,8 @@ impl InputServer for InputServerOptions<Subscribe> {
                 .or_else(|| composed_message.strip_suffix('\n'))
                 .unwrap_or(&composed_message);
 
+            debug!("Stripped: {}", stripped);
+
             match self.sender.send(stripped.to_string()).await {
                 Ok(_) => trace!(
                     "[ZMQ RECEIVER SERVER {}] Message sent to channel",
