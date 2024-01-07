@@ -80,13 +80,18 @@ pub async fn print_stats(
 ) {
     loop {
         // print interval is in minutes, so we need to convert it to seconds
-        let print_interval = print_interval * 60;
-        tokio::time::sleep(tokio::time::Duration::from_secs(print_interval)).await;
+        let print_interval_in_seconds = print_interval * 60;
+        tokio::time::sleep(tokio::time::Duration::from_secs(print_interval_in_seconds)).await;
         let total_all_time = *total_all_time_context.lock().await;
         let total_since_last = *total_since_last_context.lock().await;
 
-        info!("[STATS] Total All Time: {}", total_all_time);
-        info!("[STATS] Total Last Interval: {}", total_since_last);
+        info!("[STATS] Total Since Container Start: {}", total_all_time);
+        info!(
+            "[STATS] Total Last {} Minute{}: {}",
+            print_interval,
+            if print_interval > 1 { "s" } else { "" },
+            total_since_last
+        );
 
         // set the total_last_interval to 0
         *total_since_last_context.lock().await = 0;
