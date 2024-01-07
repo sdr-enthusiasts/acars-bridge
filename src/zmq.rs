@@ -125,7 +125,7 @@ impl OutputServer for OutputServerOptions<Publish> {
             //     format!("{}\n", message)
             // };
 
-            let message_zmq = vec!["", &message];
+            let message_zmq = vec![&message];
 
             debug!("Message: {:?}", message_zmq);
             debug!("Original: {}", message);
