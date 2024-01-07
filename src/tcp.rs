@@ -133,7 +133,7 @@ impl OutputServer for OutputServerOptions<StubbornIo<TcpStream, String>> {
                 format!("{}\n", line)
             };
 
-            match writer.write_all(line.as_bytes()).await {
+            match writer.write(line.as_bytes()).await {
                 Ok(_) => trace!(
                     "[TCP SENDER SERVER {}] Message sent to channel",
                     self.proto_name

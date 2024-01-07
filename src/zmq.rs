@@ -118,17 +118,7 @@ impl OutputServer for OutputServerOptions<Publish> {
                 message
             );
 
-            // verify we have a newline
-            // let message = if message.ends_with('\n') {
-            //     message
-            // } else {
-            //     format!("{}\n", message)
-            // };
-
             let message_zmq = vec![&message];
-
-            debug!("Message: {:?}", message_zmq);
-            debug!("Original: {}", message);
 
             match self.socket.send(message_zmq).await {
                 Ok(_) => trace!(
