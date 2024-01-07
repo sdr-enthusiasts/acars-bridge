@@ -85,9 +85,9 @@ pub async fn print_stats(
         let total_all_time = *total_all_time_context.lock().await;
         let total_since_last = *total_since_last_context.lock().await;
 
-        info!("[STATS] Total Since Container Start: {}", total_all_time);
+        info!("[STATS] Total since container start: {}", total_all_time);
         info!(
-            "[STATS] Total Last {} Minute{}: {}",
+            "[STATS] Total in the last {} minute{}: {}",
             print_interval,
             if print_interval > 1 { "s" } else { "" },
             total_since_last
