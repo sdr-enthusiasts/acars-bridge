@@ -12,6 +12,7 @@ use sdre_stubborn_io::ReconnectOptions;
 use sdre_stubborn_io::StubbornTcpStream;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
+use tokio::io::BufWriter;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_stream::StreamExt;
@@ -95,7 +96,7 @@ impl InputServer for InputServerOptions<StubbornIo<TcpStream, String>> {
 #[async_trait]
 impl OutputServer for OutputServerOptions<StubbornIo<TcpStream, String>> {
     async fn new(host: &str, port: u16, receiver: Receiver<String>) -> Result<Self, Error> {
-        let stream = match StubbornTcpStream::connect_with_options(
+        let stream: StubbornIo<TcpStream, String> = match StubbornTcpStream::connect_with_options(
             format!("{}:{}", host, port),
             reconnect_options(format!("{}:{}", host, port).as_str()),
         )
@@ -122,7 +123,7 @@ impl OutputServer for OutputServerOptions<StubbornIo<TcpStream, String>> {
     }
 
     async fn watch_queue(mut self) {
-        let mut writer = tokio::io::BufWriter::new(self.socket);
+        let mut writer: BufWriter<StubbornIo<TcpStream, String>> = BufWriter::new(self.socket);
         while let Some(line) = self.receiver.recv().await {
             trace!("[TCP SENDER SERVER {}] Received: {}", self.proto_name, line);
 
@@ -134,10 +135,13 @@ impl OutputServer for OutputServerOptions<StubbornIo<TcpStream, String>> {
             };
 
             match writer.write(line.as_bytes()).await {
-                Ok(_) => trace!(
-                    "[TCP SENDER SERVER {}] Message sent to channel",
-                    self.proto_name
-                ),
+                Ok(_) => {
+                    trace!(
+                        "[TCP SENDER SERVER {}] Message sent to channel",
+                        self.proto_name
+                    );
+                    writer.flush().await.unwrap();
+                }
                 Err(e) => error!(
                     "[TCP SENDER SERVER {}] Error sending message to channel: {}",
                     self.proto_name, e
