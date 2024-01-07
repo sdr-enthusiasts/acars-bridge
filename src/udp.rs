@@ -68,8 +68,6 @@ impl InputServer for InputServerOptions<UdpSocket> {
                 }
                 Err(e) => error!("{}Error: {:?}", self.format_name(), e),
             }
-
-            info!("{}Connection closed, shutting down", self.format_name());
         }
     }
 
