@@ -19,12 +19,11 @@ impl InputServer for InputServerOptions<UdpSocket> {
     async fn new(
         host: &str,
         port: u16,
-        sender: Sender<String>,
+        sender: Option<Sender<String>>,
         stats: Sender<u8>,
     ) -> Result<Self, Error> {
         let socket = UdpSocket::bind(format!("{}:{}", host, port)).await?;
         Ok(InputServerOptions {
-            proto_name: "udp".to_string(),
             host: host.to_string(),
             port,
             socket,
@@ -38,38 +37,44 @@ impl InputServer for InputServerOptions<UdpSocket> {
         loop {
             match self.socket.recv_from(&mut buf).await {
                 Ok((size, _)) => {
-                    let composed_message = String::from_utf8_lossy(&buf[..size]);
-                    trace!(
-                        "[UDP LISTENER SERVER {}] Received: {}",
-                        self.proto_name,
-                        composed_message
-                    );
+                    if size == 0 {
+                        warn!("{}Received empty message", self.format_name());
+                        continue;
+                    }
 
-                    match self.sender.send(composed_message.to_string()).await {
-                        Ok(_) => trace!(
-                            "[UDP LISTENER SERVER {}] Message sent to channel",
-                            self.proto_name
-                        ),
-                        Err(e) => error!(
-                            "[UDP LISTENER SERVER {}] Error sending message to channel: {}",
-                            self.proto_name, e
-                        ),
+                    let composed_message = String::from_utf8_lossy(&buf[..size]);
+
+                    debug!("{}Received: {}", self.format_name(), composed_message);
+
+                    if let Some(sender) = &self.sender {
+                        match sender.send(composed_message.to_string()).await {
+                            Ok(_) => trace!("{}Message sent to sender channel", self.format_name()),
+                            Err(e) => panic!(
+                                "{}Error sending message to sender channel: {}",
+                                self.format_name(),
+                                e
+                            ),
+                        }
                     }
 
                     match self.stats.send(1).await {
-                        Ok(_) => trace!(
-                            "[UDP LISTENER SERVER {}] Stats sent to channel",
-                            self.proto_name
-                        ),
-                        Err(e) => error!(
-                            "[UDP LISTENER SERVER {}] Error sending stats to channel: {}",
-                            self.proto_name, e
+                        Ok(_) => trace!("{}Stats sent to stats channel", self.format_name()),
+                        Err(e) => panic!(
+                            "{}Error sending to stats channel: {}",
+                            self.format_name(),
+                            e
                         ),
                     }
                 }
-                Err(e) => error!("[UDP LISTENER SERVER {}] Error: {:?}", self.proto_name, e),
+                Err(e) => error!("{}Error: {:?}", self.format_name(), e),
             }
+
+            info!("{}Connection closed, shutting down", self.format_name());
         }
+    }
+
+    fn format_name(&self) -> String {
+        format!("[UDP Input {}] ", self.port)
     }
 }
 
@@ -78,7 +83,6 @@ impl OutputServer for OutputServerOptions<UdpSocket> {
     async fn new(host: &str, port: u16, receiver: Receiver<String>) -> Result<Self, Error> {
         let socket = UdpSocket::bind("0.0.0.0:0".to_string()).await?;
         Ok(OutputServerOptions {
-            proto_name: format!("UDP:{}:{}", host, port),
             host: host.to_string(),
             port,
             socket,
@@ -88,9 +92,12 @@ impl OutputServer for OutputServerOptions<UdpSocket> {
 
     async fn watch_queue(mut self) {
         let max_size = 8192;
+
         loop {
             match self.receiver.recv().await {
                 Some(message) => {
+                    debug!("{}Received: {}", self.format_name(), message);
+
                     // convert string to bytes
                     // verify we have a newline
                     let message = if message.ends_with('\n') {
@@ -103,36 +110,41 @@ impl OutputServer for OutputServerOptions<UdpSocket> {
                     let mut offset = 0;
                     while offset < bytes.len() {
                         let end = std::cmp::min(offset + max_size, bytes.len());
+
                         match self
                             .socket
                             .send_to(&bytes[offset..end], format!("{}:{}", self.host, self.port))
                             .await
                         {
                             Ok(_) => {
-                                trace!(
-                                    "[UDP SENDER SERVER {}] Sent: {}",
-                                    self.proto_name,
-                                    String::from_utf8_lossy(&bytes[offset..end])
-                                );
+                                trace!("{}Message sent to consumer", self.format_name(),);
                                 offset = end;
                             }
                             Err(e) => {
+                                // Other sender types panic at this point, but UDP is a best effort protocol, so we just log the error and continue
+
                                 error!(
-                                    "[UDP SENDER SERVER {}] Error sending message: {}",
-                                    self.proto_name, e
+                                    "{}Error sending message to consumer: {}",
+                                    self.format_name(),
+                                    e
                                 );
-                                break;
                             }
                         }
                     }
                 }
                 None => {
-                    error!(
-                        "[UDP SENDER SERVER {}] Error receiving message from channel",
-                        self.proto_name
+                    panic!(
+                        "{}Error receiving message from sender input channel",
+                        self.format_name()
                     );
                 }
             }
+
+            info!("{}Queue is empty, shutting down", self.format_name());
         }
+    }
+
+    fn format_name(&self) -> String {
+        format!("[UDP Output {}:{}] ", self.host, self.port)
     }
 }

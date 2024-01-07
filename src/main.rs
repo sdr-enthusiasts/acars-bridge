@@ -34,8 +34,16 @@ async fn main() -> Result<()> {
     config.get_log_level().enable_logging();
     config.show_config();
 
-    // Create the input channel all receivers will send their data to.
-    let (input, output) = mpsc::channel(32);
+    let mut input = None;
+    let mut output = None;
+
+    // Create the input channel all receivers will send their data to for forwarding.
+    if config.is_destination_set() {
+        info!("Destination set, creating output channel");
+        let (input_sender, input_receiver) = mpsc::channel(32);
+        input = Some(input_sender);
+        output = Some(input_receiver);
+    }
 
     // Create the stats channel
 
@@ -94,40 +102,43 @@ async fn main() -> Result<()> {
 
     // create the output server
 
-    if let Some(host) = config.get_destination_host() {
-        if let Some(port) = config.get_destination_port() {
-            if let Some(proto) = config.get_destination_protocol() {
-                info!("Creating output server");
-                match proto.into() {
-                    SocketType::Tcp => {
-                        let output_server =
-                            OutputServerOptions::<StubbornIo<TcpStream, String>>::new(
-                                host, port, output,
-                            )
-                            .await?;
+    if config.is_destination_set() {
+        let output = match output {
+            Some(output) => output,
+            None => panic!("Output channel not created"),
+        };
 
-                        tokio::spawn(async move {
-                            output_server.watch_queue().await;
-                        });
-                    }
-                    SocketType::Udp => {
-                        let output_server =
-                            OutputServerOptions::<tokio::net::UdpSocket>::new(host, port, output)
-                                .await?;
+        let host = config.get_destination_host().clone().unwrap();
+        let port = config.get_destination_port().unwrap();
+        let proto = config.get_destination_protocol().clone().unwrap();
 
-                        tokio::spawn(async move {
-                            output_server.watch_queue().await;
-                        });
-                    }
-                    SocketType::Zmq => {
-                        let output_server =
-                            OutputServerOptions::<Publish>::new(host, port, output).await?;
+        info!("Creating output server");
 
-                        tokio::spawn(async move {
-                            output_server.watch_queue().await;
-                        });
-                    }
-                }
+        match &proto.into() {
+            SocketType::Tcp => {
+                let output_server =
+                    OutputServerOptions::<StubbornIo<TcpStream, String>>::new(&host, port, output)
+                        .await?;
+
+                tokio::spawn(async move {
+                    output_server.watch_queue().await;
+                });
+            }
+            SocketType::Udp => {
+                let output_server =
+                    OutputServerOptions::<tokio::net::UdpSocket>::new(&host, port, output).await?;
+
+                tokio::spawn(async move {
+                    output_server.watch_queue().await;
+                });
+            }
+            SocketType::Zmq => {
+                let output_server =
+                    OutputServerOptions::<Publish>::new(&host, port, output).await?;
+
+                tokio::spawn(async move {
+                    output_server.watch_queue().await;
+                });
             }
         }
     }

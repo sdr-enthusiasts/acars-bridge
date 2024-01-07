@@ -30,7 +30,7 @@ impl Stats {
         let total_all_time_context = self.total_all_time.clone();
         let total_since_last_context = self.total_since_last.clone();
 
-        trace!("Starting stats thread");
+        trace!("[STATS] Starting stats thread");
         tokio::spawn(async move {
             print_stats(
                 total_all_time_context,
@@ -90,5 +90,7 @@ pub async fn print_stats(
 
         // set the total_last_interval to 0
         *total_since_last_context.lock().await = 0;
+
+        // FIXME: Can we have a situation where the mutex is written to after we've read the value but before we've reset it?
     }
 }

@@ -28,7 +28,7 @@ impl InputServer for InputServerOptions<StubbornIo<TcpStream, String>> {
     async fn new(
         host: &str,
         port: u16,
-        sender: Sender<String>,
+        sender: Option<Sender<String>>,
         stats: Sender<u8>,
     ) -> Result<Self, Error> {
         let stream = match StubbornTcpStream::connect_with_options(
@@ -39,17 +39,12 @@ impl InputServer for InputServerOptions<StubbornIo<TcpStream, String>> {
         {
             Ok(stream) => stream,
             Err(e) => {
-                error!(
-                    "[TCP Receiver Server {}:{}] Error connecting {}",
-                    host, port, e
-                );
-                Err(e)?
+                panic!("[TCP Input {}:{}] Error connecting {}", host, port, e);
             }
         };
 
         // return self now
         Ok(InputServerOptions {
-            proto_name: "tcp".to_string(),
             host: host.to_string(),
             port,
             socket: stream,
@@ -59,37 +54,30 @@ impl InputServer for InputServerOptions<StubbornIo<TcpStream, String>> {
     }
 
     async fn receive_message(self) {
+        let name = self.format_name();
         let reader = tokio::io::BufReader::new(self.socket);
         let mut lines = Framed::new(reader, LinesCodec::new());
         while let Some(Ok(line)) = lines.next().await {
-            trace!(
-                "[TCP LISTENER SERVER {}] Received: {}",
-                self.proto_name,
-                line
-            );
+            debug!("{}Received: {}", name, line);
 
-            match self.sender.send(line).await {
-                Ok(_) => trace!(
-                    "[TCP LISTENER SERVER {}] Message sent to channel",
-                    self.proto_name
-                ),
-                Err(e) => error!(
-                    "[TCP LISTENER SERVER {}] Error sending message to channel: {}",
-                    self.proto_name, e
-                ),
+            if let Some(sender) = &self.sender {
+                match sender.send(line.clone()).await {
+                    Ok(_) => trace!("{}Message sent to output channel", name),
+                    Err(e) => panic!("{}Error sending message to output channel: {}", name, e),
+                }
             }
 
             match self.stats.send(1).await {
-                Ok(_) => trace!(
-                    "[TCP LISTENER SERVER {}] Stats sent to channel",
-                    self.proto_name
-                ),
-                Err(e) => error!(
-                    "[TCP LISTENER SERVER {}] Error sending stats to channel: {}",
-                    self.proto_name, e
-                ),
+                Ok(_) => trace!("{}Stats sent to channel", name),
+                Err(e) => panic!("{}Error sending stats to channel: {}", name, e),
             }
         }
+
+        info!("{}Connection closed, shutting down", name);
+    }
+
+    fn format_name(&self) -> String {
+        format!("[TCP Input {}:{}] ", self.host, self.port)
     }
 }
 
@@ -104,17 +92,12 @@ impl OutputServer for OutputServerOptions<StubbornIo<TcpStream, String>> {
         {
             Ok(stream) => stream,
             Err(e) => {
-                error!(
-                    "[TCP Sender Server {}:{}] Error connecting {}",
-                    host, port, e
-                );
-                Err(e)?
+                panic!("[TCP Output {}:{}] Error connecting {}", host, port, e);
             }
         };
 
         // return self now
         Ok(OutputServerOptions {
-            proto_name: "tcp".to_string(),
             host: host.to_string(),
             port,
             socket: stream,
@@ -123,9 +106,10 @@ impl OutputServer for OutputServerOptions<StubbornIo<TcpStream, String>> {
     }
 
     async fn watch_queue(mut self) {
+        let name = self.format_name();
         let mut writer: BufWriter<StubbornIo<TcpStream, String>> = BufWriter::new(self.socket);
         while let Some(line) = self.receiver.recv().await {
-            trace!("[TCP SENDER SERVER {}] Received: {}", self.proto_name, line);
+            debug!("{}Received: {}", name, line);
 
             // verify we have a newline
             let line = if line.ends_with('\n') {
@@ -136,18 +120,24 @@ impl OutputServer for OutputServerOptions<StubbornIo<TcpStream, String>> {
 
             match writer.write(line.as_bytes()).await {
                 Ok(_) => {
-                    trace!(
-                        "[TCP SENDER SERVER {}] Message sent to channel",
-                        self.proto_name
-                    );
-                    writer.flush().await.unwrap();
+                    debug!("{}Message sent to consumer", name);
+
+                    match writer.flush().await {
+                        Ok(_) => trace!("{}Flushed message to consumer", name),
+                        Err(e) => {
+                            panic!("{}Error flushing message to consumer: {}", name, e)
+                        }
+                    };
                 }
-                Err(e) => error!(
-                    "[TCP SENDER SERVER {}] Error sending message to channel: {}",
-                    self.proto_name, e
-                ),
+                Err(e) => panic!("{}Error sending message to consumer: {}", name, e),
             }
         }
+
+        info!("{}Queue is empty, shutting down", name);
+    }
+
+    fn format_name(&self) -> String {
+        format!("[TCP Output {}:{}] ", self.host, self.port)
     }
 }
 

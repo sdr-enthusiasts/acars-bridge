@@ -46,6 +46,7 @@ impl Config {
         debug!("Destination Port: {:?}", self.destination_port);
         debug!("Destination Protocol: {:?}", self.destination_protocol);
         debug!("Stat Interval: {}", self.stat_interval);
+        debug!("Would start output server: {}", self.is_destination_set());
     }
 
     pub fn get_log_level(&self) -> &str {
@@ -78,5 +79,11 @@ impl Config {
 
     pub fn get_stat_interval(&self) -> u64 {
         self.stat_interval
+    }
+
+    pub fn is_destination_set(&self) -> bool {
+        self.destination_host.is_some()
+            && self.destination_port.is_some()
+            && self.destination_protocol.is_some()
     }
 }

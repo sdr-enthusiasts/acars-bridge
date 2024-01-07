@@ -25,7 +25,7 @@ impl InputServer for InputServerOptions<Subscribe> {
     async fn new(
         host: &str,
         port: u16,
-        sender: Sender<String>,
+        sender: Option<Sender<String>>,
         stats: Sender<u8>,
     ) -> Result<Self, Error> {
         let address = format!("tcp://{}:{}", host, port);
@@ -34,7 +34,6 @@ impl InputServer for InputServerOptions<Subscribe> {
             .subscribe(b"")?;
 
         Ok(InputServerOptions {
-            proto_name: "zmq".to_string(),
             host: host.to_string(),
             port,
             socket,
@@ -48,7 +47,7 @@ impl InputServer for InputServerOptions<Subscribe> {
             let message = match msg {
                 Ok(message) => message,
                 Err(e) => {
-                    error!("[ZMQ RECEIVER SERVER {}] Error: {:?}", self.proto_name, e);
+                    error!("{}Error: {:?}", self.format_name(), e);
                     continue;
                 }
             };
@@ -58,40 +57,37 @@ impl InputServer for InputServerOptions<Subscribe> {
                 .map(|item| item.as_str().unwrap_or("invalid text"))
                 .collect::<Vec<&str>>()
                 .join(" ");
-            trace!(
-                "[ZMQ RECEIVER SERVER {}] Received: {}",
-                self.proto_name,
-                composed_message
-            );
+
+            debug!("{}Received: {}", self.format_name(), composed_message);
             let stripped = composed_message
                 .strip_suffix("\r\n")
                 .or_else(|| composed_message.strip_suffix('\n'))
                 .unwrap_or(&composed_message);
 
-            debug!("Stripped: {}", stripped);
-
-            match self.sender.send(stripped.to_string()).await {
-                Ok(_) => trace!(
-                    "[ZMQ RECEIVER SERVER {}] Message sent to channel",
-                    self.proto_name
-                ),
-                Err(e) => error!(
-                    "[ZMQ RECEIVER SERVER {}] Error sending message to channel: {}",
-                    self.proto_name, e
-                ),
+            if let Some(sender) = &self.sender {
+                match sender.send(stripped.to_string()).await {
+                    Ok(_) => trace!("{}Message sent to sender channel", self.format_name()),
+                    Err(e) => panic!(
+                        "{}Error sending message to sender channel: {}",
+                        self.format_name(),
+                        e
+                    ),
+                }
             }
 
             match self.stats.send(1).await {
-                Ok(_) => trace!(
-                    "[ZMQ RECEIVER SERVER {}] Stats sent to channel",
-                    self.proto_name
-                ),
-                Err(e) => error!(
-                    "[ZMQ RECEIVER SERVER {}] Error sending stats to channel: {}",
-                    self.proto_name, e
+                Ok(_) => trace!("{}Stats sent to channel", self.format_name()),
+                Err(e) => panic!(
+                    "{}Error sending stats to channel: {}",
+                    self.format_name(),
+                    e
                 ),
             }
         }
+    }
+
+    fn format_name(&self) -> String {
+        format!("[ZMQ Input {}:{}] ", self.host, self.port)
     }
 }
 
@@ -102,7 +98,6 @@ impl OutputServer for OutputServerOptions<Publish> {
         let socket = publish(&Context::new()).connect(&address)?;
 
         Ok(OutputServerOptions {
-            proto_name: "zmq".to_string(),
             host: host.to_string(),
             port,
             socket,
@@ -112,24 +107,22 @@ impl OutputServer for OutputServerOptions<Publish> {
 
     async fn watch_queue(mut self) {
         while let Some(message) = self.receiver.recv().await {
-            trace!(
-                "[ZMQ SENDER SERVER {}] Received: {}",
-                self.proto_name,
-                message
-            );
+            debug!("{}Received: {}", self.format_name(), message);
 
             let message_zmq = vec![&message];
 
             match self.socket.send(message_zmq).await {
-                Ok(_) => trace!(
-                    "[ZMQ SENDER SERVER {}] Message sent to channel",
-                    self.proto_name
-                ),
-                Err(e) => error!(
-                    "[ZMQ SENDER SERVER {}] Error sending message to channel: {}",
-                    self.proto_name, e
+                Ok(_) => trace!("{}Message sent to consumer", self.format_name()),
+                Err(e) => panic!(
+                    "{}Error sending message to consumer: {}",
+                    self.format_name(),
+                    e
                 ),
             }
         }
+    }
+
+    fn format_name(&self) -> String {
+        format!("[ZMQ Output {}:{}] ", self.host, self.port)
     }
 }
