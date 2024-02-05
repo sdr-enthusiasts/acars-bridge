@@ -137,8 +137,6 @@ impl OutputServer for OutputServerOptions<UdpSocket> {
                     );
                 }
             }
-
-            info!("{}Queue is empty, shutting down", self.format_name());
         }
     }
 
