@@ -16,23 +16,24 @@ pub struct Stats {
 }
 
 impl Stats {
+    #[must_use]
     pub fn new(receiver: Receiver<u8>) -> Self {
         // wrap the stats in an Arc<Mutex<Stats>> to allow for multiple threads to access it
-        Stats {
+        Self {
             total_all_time: Arc::new(Mutex::new(0)),
             total_since_last: Arc::new(Mutex::new(0)),
             receiver,
         }
     }
 
-    pub async fn run(mut self, print_interval: u64) {
+    pub fn run(mut self, print_interval: u64) {
         // clone the Arc<Mutex<Stats>> so we can pass it to the print_stats function
         let total_all_time_context = self.total_all_time.clone();
         let total_since_last_context = self.total_since_last.clone();
 
         trace!("[STATS] Starting stats thread");
         tokio::spawn(async move {
-            print_stats(
+            print_stats_to_console(
                 total_all_time_context,
                 total_since_last_context,
                 print_interval,
@@ -73,7 +74,7 @@ impl Stats {
     }
 }
 
-pub async fn print_stats(
+pub async fn print_stats_to_console(
     total_all_time_context: Arc<Mutex<u64>>,
     total_since_last_context: Arc<Mutex<u64>>,
     print_interval: u64,

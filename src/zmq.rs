@@ -28,12 +28,12 @@ impl InputServer for InputServerOptions<Subscribe> {
         sender: Option<Sender<String>>,
         stats: Sender<u8>,
     ) -> Result<Self, Error> {
-        let address = format!("tcp://{}:{}", host, port);
+        let address = format!("tcp://{host}:{port}");
         let socket = subscribe(&Context::new())
             .connect(&address)?
             .subscribe(b"")?;
 
-        Ok(InputServerOptions {
+        Ok(Self {
             host: host.to_string(),
             port,
             socket,
@@ -66,7 +66,7 @@ impl InputServer for InputServerOptions<Subscribe> {
 
             if let Some(sender) = &self.sender {
                 match sender.send(stripped.to_string()).await {
-                    Ok(_) => trace!("{}Message sent to sender channel", self.format_name()),
+                    Ok(()) => trace!("{}Message sent to sender channel", self.format_name()),
                     Err(e) => panic!(
                         "{}Error sending message to sender channel: {}",
                         self.format_name(),
@@ -76,7 +76,7 @@ impl InputServer for InputServerOptions<Subscribe> {
             }
 
             match self.stats.send(1).await {
-                Ok(_) => trace!("{}Stats sent to channel", self.format_name()),
+                Ok(()) => trace!("{}Stats sent to channel", self.format_name()),
                 Err(e) => panic!(
                     "{}Error sending stats to channel: {}",
                     self.format_name(),
@@ -94,10 +94,10 @@ impl InputServer for InputServerOptions<Subscribe> {
 #[async_trait]
 impl OutputServer for OutputServerOptions<Publish> {
     async fn new(host: &str, port: u16, receiver: Receiver<String>) -> Result<Self, Error> {
-        let address = format!("tcp://{}:{}", host, port);
+        let address = format!("tcp://{host}:{port}");
         let socket = publish(&Context::new()).connect(&address)?;
 
-        Ok(OutputServerOptions {
+        Ok(Self {
             host: host.to_string(),
             port,
             socket,
@@ -112,7 +112,7 @@ impl OutputServer for OutputServerOptions<Publish> {
             let message_zmq = vec![&message];
 
             match self.socket.send(message_zmq).await {
-                Ok(_) => trace!("{}Message sent to consumer", self.format_name()),
+                Ok(()) => trace!("{}Message sent to consumer", self.format_name()),
                 Err(e) => panic!(
                     "{}Error sending message to consumer: {}",
                     self.format_name(),

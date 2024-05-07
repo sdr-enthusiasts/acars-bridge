@@ -32,19 +32,19 @@ impl InputServer for InputServerOptions<StubbornIo<TcpStream, String>> {
         stats: Sender<u8>,
     ) -> Result<Self, Error> {
         let stream = match StubbornTcpStream::connect_with_options(
-            format!("{}:{}", host, port),
-            reconnect_options(format!("{}:{}", host, port).as_str()),
+            format!("{host}:{port}"),
+            reconnect_options(format!("{host}:{port}").as_str()),
         )
         .await
         {
             Ok(stream) => stream,
             Err(e) => {
-                panic!("[TCP Input {}:{}] Error connecting {}", host, port, e);
+                panic!("[TCP Input {host}:{port}] Error connecting {e}");
             }
         };
 
         // return self now
-        Ok(InputServerOptions {
+        Ok(Self {
             host: host.to_string(),
             port,
             socket: stream,
@@ -57,19 +57,20 @@ impl InputServer for InputServerOptions<StubbornIo<TcpStream, String>> {
         let name = self.format_name();
         let reader = tokio::io::BufReader::new(self.socket);
         let mut lines = Framed::new(reader, LinesCodec::new());
+
         while let Some(Ok(line)) = lines.next().await {
             debug!("{}Received: {}", name, line);
 
             if let Some(sender) = &self.sender {
                 match sender.send(line.clone()).await {
-                    Ok(_) => trace!("{}Message sent to output channel", name),
-                    Err(e) => panic!("{}Error sending message to output channel: {}", name, e),
+                    Ok(()) => trace!("{}Message sent to output channel", name),
+                    Err(e) => panic!("{name}Error sending message to output channel: {e}"),
                 }
             }
 
             match self.stats.send(1).await {
-                Ok(_) => trace!("{}Stats sent to channel", name),
-                Err(e) => panic!("{}Error sending stats to channel: {}", name, e),
+                Ok(()) => trace!("{}Stats sent to channel", name),
+                Err(e) => panic!("{name}Error sending stats to channel: {e}"),
             }
         }
 
@@ -85,19 +86,19 @@ impl InputServer for InputServerOptions<StubbornIo<TcpStream, String>> {
 impl OutputServer for OutputServerOptions<StubbornIo<TcpStream, String>> {
     async fn new(host: &str, port: u16, receiver: Receiver<String>) -> Result<Self, Error> {
         let stream: StubbornIo<TcpStream, String> = match StubbornTcpStream::connect_with_options(
-            format!("{}:{}", host, port),
-            reconnect_options(format!("{}:{}", host, port).as_str()),
+            format!("{host}:{port}"),
+            reconnect_options(format!("{host}:{port}").as_str()),
         )
         .await
         {
             Ok(stream) => stream,
             Err(e) => {
-                panic!("[TCP Output {}:{}] Error connecting {}", host, port, e);
+                panic!("[TCP Output {host}:{port}] Error connecting {e}");
             }
         };
 
         // return self now
-        Ok(OutputServerOptions {
+        Ok(Self {
             host: host.to_string(),
             port,
             socket: stream,
@@ -115,7 +116,7 @@ impl OutputServer for OutputServerOptions<StubbornIo<TcpStream, String>> {
             let line = if line.ends_with('\n') {
                 line
             } else {
-                format!("{}\n", line)
+                format!("{line}\n")
             };
 
             match writer.write(line.as_bytes()).await {
@@ -123,13 +124,13 @@ impl OutputServer for OutputServerOptions<StubbornIo<TcpStream, String>> {
                     debug!("{}Message sent to consumer", name);
 
                     match writer.flush().await {
-                        Ok(_) => trace!("{}Flushed message to consumer", name),
+                        Ok(()) => trace!("{}Flushed message to consumer", name),
                         Err(e) => {
-                            panic!("{}Error flushing message to consumer: {}", name, e)
+                            panic!("{name}Error flushing message to consumer: {e}")
                         }
                     };
                 }
-                Err(e) => panic!("{}Error sending message to consumer: {}", name, e),
+                Err(e) => panic!("{name}Error sending message to consumer: {e}"),
             }
         }
 
