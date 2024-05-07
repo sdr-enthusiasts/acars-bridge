@@ -40,7 +40,6 @@ impl Config {
         debug!("Log Level: {}", self.log_level);
         debug!("Source Host: {}", self.source_host);
         debug!("Source Port: {}", self.source_port);
-        debug!("Source Port: {}", self.source_port);
         debug!("Source Protocol: {}", self.source_protocol);
         debug!("Destination Host: {:?}", self.destination_host);
         debug!("Destination Port: {:?}", self.destination_port);
@@ -49,39 +48,48 @@ impl Config {
         debug!("Would start output server: {}", self.is_destination_set());
     }
 
+    #[must_use]
     pub fn get_log_level(&self) -> &str {
         &self.log_level
     }
 
+    #[must_use]
     pub fn get_source_host(&self) -> &str {
         &self.source_host
     }
 
-    pub fn get_source_port(&self) -> u16 {
+    #[must_use]
+    pub const fn get_source_port(&self) -> u16 {
         self.source_port
     }
 
+    #[must_use]
     pub fn get_source_protocol(&self) -> &str {
         &self.source_protocol
     }
 
-    pub fn get_destination_host(&self) -> &Option<String> {
+    #[must_use]
+    pub const fn get_destination_host(&self) -> &Option<String> {
         &self.destination_host
     }
 
-    pub fn get_destination_port(&self) -> Option<u16> {
+    #[must_use]
+    pub const fn get_destination_port(&self) -> Option<u16> {
         self.destination_port
     }
 
-    pub fn get_destination_protocol(&self) -> &Option<String> {
+    #[must_use]
+    pub const fn get_destination_protocol(&self) -> &Option<String> {
         &self.destination_protocol
     }
 
-    pub fn get_stat_interval(&self) -> u64 {
+    #[must_use]
+    pub const fn get_stat_interval(&self) -> u64 {
         self.stat_interval
     }
 
-    pub fn is_destination_set(&self) -> bool {
+    #[must_use]
+    pub const fn is_destination_set(&self) -> bool {
         self.destination_host.is_some()
             && self.destination_port.is_some()
             && self.destination_protocol.is_some()

@@ -22,8 +22,8 @@ impl InputServer for InputServerOptions<UdpSocket> {
         sender: Option<Sender<String>>,
         stats: Sender<u8>,
     ) -> Result<Self, Error> {
-        let socket = UdpSocket::bind(format!("{}:{}", host, port)).await?;
-        Ok(InputServerOptions {
+        let socket = UdpSocket::bind(format!("{host}:{port}")).await?;
+        Ok(Self {
             host: host.to_string(),
             port,
             socket,
@@ -48,7 +48,9 @@ impl InputServer for InputServerOptions<UdpSocket> {
 
                     if let Some(sender) = &self.sender {
                         match sender.send(composed_message.to_string()).await {
-                            Ok(_) => trace!("{}Message sent to sender channel", self.format_name()),
+                            Ok(()) => {
+                                trace!("{}Message sent to sender channel", self.format_name())
+                            }
                             Err(e) => panic!(
                                 "{}Error sending message to sender channel: {}",
                                 self.format_name(),
@@ -58,7 +60,7 @@ impl InputServer for InputServerOptions<UdpSocket> {
                     }
 
                     match self.stats.send(1).await {
-                        Ok(_) => trace!("{}Stats sent to stats channel", self.format_name()),
+                        Ok(()) => trace!("{}Stats sent to stats channel", self.format_name()),
                         Err(e) => panic!(
                             "{}Error sending to stats channel: {}",
                             self.format_name(),
@@ -80,7 +82,7 @@ impl InputServer for InputServerOptions<UdpSocket> {
 impl OutputServer for OutputServerOptions<UdpSocket> {
     async fn new(host: &str, port: u16, receiver: Receiver<String>) -> Result<Self, Error> {
         let socket = UdpSocket::bind("0.0.0.0:0".to_string()).await?;
-        Ok(OutputServerOptions {
+        Ok(Self {
             host: host.to_string(),
             port,
             socket,
@@ -101,7 +103,7 @@ impl OutputServer for OutputServerOptions<UdpSocket> {
                     let message = if message.ends_with('\n') {
                         message
                     } else {
-                        format!("{}\n", message)
+                        format!("{message}\n")
                     };
                     let bytes = message.as_bytes();
                     // send bytes to destination. If the message is larger than the max size, send up to max size and keep sending until the entire message is sent.

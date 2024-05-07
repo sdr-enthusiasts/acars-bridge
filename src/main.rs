@@ -4,6 +4,15 @@
 // Permission is granted to use, copy, modify, and redistribute the work.
 // Full license information available in the project LICENSE file.
 
+#![deny(
+    clippy::pedantic,
+    //clippy::cargo,
+    clippy::nursery,
+    clippy::style,
+    clippy::correctness,
+    clippy::all
+)]
+
 #[macro_use]
 extern crate log;
 
@@ -35,15 +44,14 @@ async fn main() -> Result<()> {
     config.show_config();
 
     let mut input = None;
-    let mut output = None;
-
-    // Create the input channel all receivers will send their data to for forwarding.
-    if config.is_destination_set() {
+    let output = if config.is_destination_set() {
         info!("Destination set, creating output channel");
         let (input_sender, input_receiver) = mpsc::channel(32);
         input = Some(input_sender);
-        output = Some(input_receiver);
-    }
+        Some(input_receiver)
+    } else {
+        None
+    };
 
     // Create the stats channel
 
@@ -53,13 +61,13 @@ async fn main() -> Result<()> {
     let print_interval = config.get_stat_interval();
 
     tokio::spawn(async move {
-        stats.run(print_interval).await;
+        stats.run(print_interval);
     });
     // create the input server
 
     info!("Creating input server");
-    match config.get_source_protocol().into() {
-        SocketType::Tcp => {
+    match SocketType::try_from(config.get_source_protocol()) {
+        Ok(SocketType::Tcp) => {
             let input_server = InputServerOptions::<StubbornIo<TcpStream, String>>::new(
                 config.get_source_host(),
                 config.get_source_port(),
@@ -72,7 +80,7 @@ async fn main() -> Result<()> {
                 input_server.receive_message().await;
             });
         }
-        SocketType::Udp => {
+        Ok(SocketType::Udp) => {
             let input_server = InputServerOptions::<tokio::net::UdpSocket>::new(
                 config.get_source_host(),
                 config.get_source_port(),
@@ -85,7 +93,7 @@ async fn main() -> Result<()> {
                 input_server.receive_message().await;
             });
         }
-        SocketType::Zmq => {
+        Ok(SocketType::Zmq) => {
             let input_server = InputServerOptions::<Subscribe>::new(
                 config.get_source_host(),
                 config.get_source_port(),
@@ -98,15 +106,15 @@ async fn main() -> Result<()> {
                 input_server.receive_message().await;
             });
         }
+        Err(e) => {
+            panic!("Error creating input server: {e}");
+        }
     }
 
     // create the output server
 
     if config.is_destination_set() {
-        let output = match output {
-            Some(output) => output,
-            None => panic!("Output channel not created"),
-        };
+        let output = output.map_or_else(|| panic!("Output channel not created"), |output| output);
 
         let host = config.get_destination_host().clone().unwrap();
         let port = config.get_destination_port().unwrap();
@@ -114,8 +122,8 @@ async fn main() -> Result<()> {
 
         info!("Creating output server");
 
-        match &proto.into() {
-            SocketType::Tcp => {
+        match SocketType::try_from(proto) {
+            Ok(SocketType::Tcp) => {
                 let output_server =
                     OutputServerOptions::<StubbornIo<TcpStream, String>>::new(&host, port, output)
                         .await?;
@@ -124,7 +132,7 @@ async fn main() -> Result<()> {
                     output_server.watch_queue().await;
                 });
             }
-            SocketType::Udp => {
+            Ok(SocketType::Udp) => {
                 let output_server =
                     OutputServerOptions::<tokio::net::UdpSocket>::new(&host, port, output).await?;
 
@@ -132,13 +140,17 @@ async fn main() -> Result<()> {
                     output_server.watch_queue().await;
                 });
             }
-            SocketType::Zmq => {
+            Ok(SocketType::Zmq) => {
                 let output_server =
                     OutputServerOptions::<Publish>::new(&host, port, output).await?;
 
                 tokio::spawn(async move {
                     output_server.watch_queue().await;
                 });
+            }
+
+            Err(e) => {
+                panic!("Error creating output server: {e}");
             }
         }
     }

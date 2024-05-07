@@ -15,35 +15,41 @@ pub enum SocketType {
     Zmq,
 }
 
-impl From<String> for SocketType {
-    fn from(s: String) -> Self {
+impl TryFrom<String> for SocketType {
+    type Error = Error;
+
+    fn try_from(s: String) -> Result<Self> {
         match s.to_lowercase().as_str() {
-            "tcp" => SocketType::Tcp,
-            "udp" => SocketType::Udp,
-            "zmq" => SocketType::Zmq,
-            _ => panic!("Unknown Socket Type: {}", s),
+            "tcp" => Ok(Self::Tcp),
+            "udp" => Ok(Self::Udp),
+            "zmq" => Ok(Self::Zmq),
+            _ => Err(Error::msg(format!("Unknown Socket Type: {s}"))),
         }
     }
 }
 
-impl From<&str> for SocketType {
-    fn from(s: &str) -> Self {
+impl TryFrom<&str> for SocketType {
+    type Error = Error;
+
+    fn try_from(s: &str) -> Result<Self> {
         match s.to_lowercase().as_str() {
-            "tcp" => SocketType::Tcp,
-            "udp" => SocketType::Udp,
-            "zmq" => SocketType::Zmq,
-            _ => panic!("Unknown Socket Type: {}", s),
+            "tcp" => Ok(Self::Tcp),
+            "udp" => Ok(Self::Udp),
+            "zmq" => Ok(Self::Zmq),
+            _ => Err(Error::msg(format!("Unknown Socket Type: {s}"))),
         }
     }
 }
 
-impl From<&String> for SocketType {
-    fn from(s: &String) -> Self {
+impl TryFrom<&String> for SocketType {
+    type Error = Error;
+
+    fn try_from(s: &String) -> Result<Self> {
         match s.to_lowercase().as_str() {
-            "tcp" => SocketType::Tcp,
-            "udp" => SocketType::Udp,
-            "zmq" => SocketType::Zmq,
-            _ => panic!("Unknown Socket Type: {}", s),
+            "tcp" => Ok(Self::Tcp),
+            "udp" => Ok(Self::Udp),
+            "zmq" => Ok(Self::Zmq),
+            _ => Err(Error::msg(format!("Unknown Socket Type: {s}"))),
         }
     }
 }
