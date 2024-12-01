@@ -820,9 +820,9 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "sdre-rust-logging"
-version = "0.3.6"
+version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed65ffcbf96390c507bf7479c4e458787ca5b96d297d7bf9ceba95ddd77b2724"
+checksum = "03f1137138e84b832a2ff2298bdc64c994ec44a4a42411c00d67732f15c6add8"
 dependencies = [
  "anstyle",
  "chrono",
@@ -832,9 +832,9 @@ dependencies = [
 
 [[package]]
 name = "sdre-stubborn-io"
-version = "0.5.11"
+version = "0.5.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a41086e110f1f241a55d64334aa0cb7673191dc86a994f506bd30d5b7f9b1acb"
+checksum = "22f346ad4b7df7814ef06e9c673bcd491e7e2564f9ae65805b90f07d67a682fd"
 dependencies = [
  "log",
  "rand",

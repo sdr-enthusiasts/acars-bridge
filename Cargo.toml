@@ -10,9 +10,9 @@ log = "0.4.22"
 tokio = { version = "1.41.1", features = ["full", "tracing"] }
 tokio-util = { version = "0.7.12", features = ["full"] }
 tokio-stream = "0.1.16"
-sdre-rust-logging = "0.3.6"
+sdre-rust-logging = "0.3.7"
 clap = { version = "4.5.21", features = ["derive", "env"] }
-sdre-stubborn-io = "0.5.11"
+sdre-stubborn-io = "0.5.12"
 async-trait = "0.1.83"
 zmq = "0.10.0"
 tmq = "0.5.0"
