@@ -49,7 +49,7 @@ impl InputServer for InputServerOptions<UdpSocket> {
                     if let Some(sender) = &self.sender {
                         match sender.send(composed_message.to_string()).await {
                             Ok(()) => {
-                                trace!("{}Message sent to sender channel", self.format_name())
+                                trace!("{}Message sent to sender channel", self.format_name());
                             }
                             Err(e) => panic!(
                                 "{}Error sending message to sender channel: {}",
