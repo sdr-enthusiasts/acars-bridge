@@ -6,13 +6,13 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-log = "0.4.26"
+log = "0.4.27"
 tokio = { version = "1.44.1", features = ["full", "tracing"] }
 tokio-util = { version = "0.7.14", features = ["full"] }
 tokio-stream = "0.1.17"
-sdre-rust-logging = "0.3.14"
-clap = { version = "4.5.32", features = ["derive", "env"] }
-sdre-stubborn-io = "0.6.4"
+sdre-rust-logging = "0.3.15"
+clap = { version = "4.5.34", features = ["derive", "env"] }
+sdre-stubborn-io = "0.6.5"
 async-trait = "0.1.88"
 zmq = "0.10.0"
 tmq = "0.5.0"
