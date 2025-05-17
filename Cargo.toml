@@ -11,7 +11,7 @@ tokio = { version = "1.44.2", features = ["full", "tracing"] }
 tokio-util = { version = "0.7.14", features = ["full"] }
 tokio-stream = "0.1.17"
 sdre-rust-logging = "0.3.17"
-clap = { version = "4.5.37", features = ["derive", "env"] }
+clap = { version = "4.5.38", features = ["derive", "env"] }
 sdre-stubborn-io = "0.6.7"
 async-trait = "0.1.88"
 zmq = "0.10.0"
