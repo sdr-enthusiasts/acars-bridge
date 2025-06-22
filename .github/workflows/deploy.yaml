@@ -55,6 +55,7 @@ jobs:
         with:
           context: .
           file: Dockerfile.build_binary
+          tags: acars-bridge:latest
           push: false
 
       - name: Copy binary from container
