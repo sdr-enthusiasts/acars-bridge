@@ -62,6 +62,6 @@ jobs:
       - name: Upload acars-bridge artifact
         uses: actions/upload-artifact@v4
         with:
-          name: acars-bridge-${{ matrix.os }}
+          name: acars-bridge-${{ matrix.os.arch }}
           path: |
             ./bridge/acars-bridge
