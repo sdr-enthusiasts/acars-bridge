@@ -45,13 +45,13 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            TARGET_NAME: amd64
+            TARGET_NAME: linux/amd64
           - os: ubuntu-24.04-arm
             arch: arm64
-            TARGET_NAME: arm64
+            TARGET_NAME: linux/arm64
           - os: ubuntu-24.04-arm
             arch: arm32
-            TARGET_NAME: arm32
+            TARGET_NAME: linux/arm/v7
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -83,3 +83,4 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           push: true
+          platforms: ${{ matrix.TARGET_NAME }}
