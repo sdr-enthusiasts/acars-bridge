@@ -59,22 +59,22 @@ impl InputServer for InputServerOptions<StubbornIo<TcpStream, String>> {
         let mut lines = Framed::new(reader, LinesCodec::new());
 
         while let Some(Ok(line)) = lines.next().await {
-            debug!("{}Received: {}", name, line);
+            debug!("{name}Received: {line}");
 
             if let Some(sender) = &self.sender {
                 match sender.send(line.clone()).await {
-                    Ok(()) => trace!("{}Message sent to output channel", name),
+                    Ok(()) => trace!("{name}Message sent to output channel"),
                     Err(e) => panic!("{name}Error sending message to output channel: {e}"),
                 }
             }
 
             match self.stats.send(1).await {
-                Ok(()) => trace!("{}Stats sent to channel", name),
+                Ok(()) => trace!("{name}Stats sent to channel"),
                 Err(e) => panic!("{name}Error sending stats to channel: {e}"),
             }
         }
 
-        info!("{}Connection closed, shutting down", name);
+        info!("{name}Connection closed, shutting down");
     }
 
     fn format_name(&self) -> String {
@@ -110,7 +110,7 @@ impl OutputServer for OutputServerOptions<StubbornIo<TcpStream, String>> {
         let name = self.format_name();
         let mut writer: BufWriter<StubbornIo<TcpStream, String>> = BufWriter::new(self.socket);
         while let Some(line) = self.receiver.recv().await {
-            debug!("{}Received: {}", name, line);
+            debug!("{name}Received: {line}");
 
             // verify we have a newline
             let line = if line.ends_with('\n') {
@@ -121,20 +121,20 @@ impl OutputServer for OutputServerOptions<StubbornIo<TcpStream, String>> {
 
             match writer.write(line.as_bytes()).await {
                 Ok(_) => {
-                    debug!("{}Message sent to consumer", name);
+                    debug!("{name}Message sent to consumer");
 
                     match writer.flush().await {
-                        Ok(()) => trace!("{}Flushed message to consumer", name),
+                        Ok(()) => trace!("{name}Flushed message to consumer"),
                         Err(e) => {
                             panic!("{name}Error flushing message to consumer: {e}")
                         }
-                    };
+                    }
                 }
                 Err(e) => panic!("{name}Error sending message to consumer: {e}"),
             }
         }
 
-        info!("{}Queue is empty, shutting down", name);
+        info!("{name}Queue is empty, shutting down");
     }
 
     fn format_name(&self) -> String {
