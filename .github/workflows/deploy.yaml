@@ -38,6 +38,9 @@ jobs:
         include:
           - os: ubuntu-latest
           - os: ubuntu-24.04-arm
+            arch: arm64
+          - os: ubuntu-24.04-arm
+            arch: arm32
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -53,6 +56,12 @@ jobs:
           context: .
           file: Dockerfile.build_binary
           push: false
+
+      - name: Copy binary from container
+        run: |
+          docker create --name temp_container acars-bridge:latest
+          docker cp temp_container:/acars-bridge ./acars-bridge
+          docker rm temp_container
 
       - uses: actions/upload-artifact@v4
         with:
