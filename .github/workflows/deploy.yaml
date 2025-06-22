@@ -37,10 +37,13 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
+            TARGET_NAME: amd64
           - os: ubuntu-24.04-arm
             arch: arm64
+            TARGET_NAME: arm64
           - os: ubuntu-24.04-arm
             arch: arm32
+            TARGET_NAME: arm32
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -62,6 +65,6 @@ jobs:
       - name: Upload acars-bridge artifact
         uses: actions/upload-artifact@v4
         with:
-          name: acars-bridge-${{ matrix.os.arch }}
+          name: acars-bridge-${{ matrix.TARGET_NAME }}
           path: |
             ./bridge/acars-bridge
