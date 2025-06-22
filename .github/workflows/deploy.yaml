@@ -57,25 +57,11 @@ jobs:
           file: Dockerfile.build_binary
           tags: acars-bridge:latest
           push: false
-          load: true
-
-      - name: Run container
-        uses: tj-actions/docker-run@v2
-        id: docker-run
-        with:
-          image: acars-bridge:latest
-          name: acars-bridge
-
-      - name: Copy from container to host
-        uses: tj-actions/docker-cp@v2
-        with:
-          container: ${{ steps.docker-run.outputs.container-id }}
-          source: acars-bridge
-          destination: acars-bridge
+          outputs: type=local,dest=./bridge/
 
       - name: Upload acars-bridge artifact
         uses: actions/upload-artifact@v4
         with:
           name: acars-bridge-${{ matrix.os }}
           path: |
-            ./acars-bridge
+            ./bridge/acars-bridge
