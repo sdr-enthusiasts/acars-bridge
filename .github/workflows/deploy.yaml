@@ -86,7 +86,7 @@ jobs:
         with:
           context: .
           file: Dockerfile.build_binary
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: ${{ matrix.TARGET_NAME }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
