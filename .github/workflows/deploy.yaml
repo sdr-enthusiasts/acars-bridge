@@ -86,7 +86,7 @@ jobs:
         with:
           context: .
           file: Dockerfile.build_binary
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           labels: ${{ steps.meta.outputs.labels }}
           platforms: ${{ matrix.TARGET_NAME }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
@@ -147,7 +147,7 @@ jobs:
       - name: Create manifest list and push
         working-directory: ${{ runner.temp }}/digests
         run: |
-          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest") \
             $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
 
       - name: Inspect image
