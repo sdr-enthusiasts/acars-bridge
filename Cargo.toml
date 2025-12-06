@@ -7,7 +7,7 @@ rust-version = "1.91"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-log = "0.4.27"
+log = "0.4.29"
 tokio = { version = "1.45.1", features = ["full", "tracing"] }
 tokio-util = { version = "0.7.17", features = ["full"] }
 tokio-stream = "0.1.17"
