@@ -8,11 +8,11 @@ use anyhow::{Error, Result};
 use async_trait::async_trait;
 use futures::SinkExt;
 use futures::StreamExt;
+use tmq::Context;
 use tmq::publish;
 use tmq::publish::Publish;
 use tmq::subscribe;
 use tmq::subscribe::Subscribe;
-use tmq::Context;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::serverconfig::InputServer;

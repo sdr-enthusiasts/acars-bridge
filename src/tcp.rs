@@ -6,10 +6,10 @@
 
 use anyhow::{Error, Result};
 use async_trait::async_trait;
-use sdre_stubborn_io::config::DurationIterator;
-use sdre_stubborn_io::tokio::StubbornIo;
 use sdre_stubborn_io::ReconnectOptions;
 use sdre_stubborn_io::StubbornTcpStream;
+use sdre_stubborn_io::config::DurationIterator;
+use sdre_stubborn_io::tokio::StubbornIo;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::io::BufWriter;

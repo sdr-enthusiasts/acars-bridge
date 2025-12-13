@@ -114,7 +114,7 @@ async fn main() -> Result<()> {
     // create the output server
 
     if config.is_destination_set() {
-        let output = output.map_or_else(|| panic!("Output channel not created"), |output| output);
+        let output = output.unwrap_or_else(|| panic!("Output channel not created"));
 
         let host = config.get_destination_host().clone().unwrap();
         let port = config.get_destination_port().unwrap();

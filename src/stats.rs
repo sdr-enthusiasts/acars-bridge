@@ -5,8 +5,8 @@
 // Full license information available in the project LICENSE file.
 
 use std::sync::Arc;
-use tokio::sync::mpsc::Receiver;
 use tokio::sync::Mutex;
+use tokio::sync::mpsc::Receiver;
 // A struct to hold the stats
 
 pub struct Stats {
