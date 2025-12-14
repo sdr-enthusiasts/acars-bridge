@@ -26,7 +26,7 @@
       "matchManagers": ["github-actions", "nix"],
       "matchUpdateTypes": ["major", "minor", "patch", "pin"],
       "automerge": true
-    }
+    },
     {
       "matchManagers": ["rust"],
       "matchUpdateTypes": ["major", "minor", "patch", "pin"],
