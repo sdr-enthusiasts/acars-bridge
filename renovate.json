@@ -28,7 +28,7 @@
       "automerge": true
     },
     {
-      "matchManagers": ["rust"],
+      "matchManagers": ["cargo"],
       "matchUpdateTypes": ["major", "minor", "patch", "pin"],
       "automerge": false
     }
