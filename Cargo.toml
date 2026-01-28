@@ -9,11 +9,11 @@ rust-version = "1.91"
 [dependencies]
 log = "0.4.29"
 tokio = { version = "1.45.1", features = ["full", "tracing"] }
-tokio-util = { version = "0.7.17", features = ["full"] }
-tokio-stream = "0.1.17"
-sdre-rust-logging = "0.3.23"
-clap = { version = "4.5.53", features = ["derive", "env"] }
-sdre-stubborn-io = "0.6.14"
+tokio-util = { version = "0.7.18", features = ["full"] }
+tokio-stream = "0.1.18"
+sdre-rust-logging = "0.3.24"
+clap = { version = "4.5.55", features = ["derive", "env"] }
+sdre-stubborn-io = "0.6.15"
 async-trait = "0.1.89"
 zmq = "0.10.0"
 tmq = "0.5.0"
