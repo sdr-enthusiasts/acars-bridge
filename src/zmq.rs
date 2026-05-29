@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Fred Clausen
+// Copyright (c) 2024-2026 Fred Clausen
 //
 // Licensed under the MIT license: https://opensource.org/licenses/MIT
 // Permission is granted to use, copy, modify, and redistribute the work.
@@ -42,7 +42,7 @@ impl InputServer for InputServerOptions<Subscribe> {
         })
     }
 
-    async fn receive_message(mut self) {
+    async fn receive_message(mut self) -> Result<(), Error> {
         while let Some(msg) = self.socket.next().await {
             let message = match msg {
                 Ok(message) => message,
@@ -65,25 +65,31 @@ impl InputServer for InputServerOptions<Subscribe> {
                 .unwrap_or(&composed_message);
 
             if let Some(sender) = &self.sender {
-                match sender.send(stripped.to_string()).await {
-                    Ok(()) => trace!("{}Message sent to sender channel", self.format_name()),
-                    Err(e) => panic!(
-                        "{}Error sending message to sender channel: {}",
+                if let Err(e) = sender.send(stripped.to_string()).await {
+                    return Err(Error::msg(format!(
+                        "{}Output channel closed: {}",
                         self.format_name(),
                         e
-                    ),
+                    )));
                 }
+                trace!("{}Message sent to sender channel", self.format_name());
             }
 
-            match self.stats.send(1).await {
-                Ok(()) => trace!("{}Stats sent to channel", self.format_name()),
-                Err(e) => panic!(
-                    "{}Error sending stats to channel: {}",
+            if let Err(e) = self.stats.send(1).await {
+                return Err(Error::msg(format!(
+                    "{}Stats channel closed: {}",
                     self.format_name(),
                     e
-                ),
+                )));
             }
+            trace!("{}Stats sent to channel", self.format_name());
         }
+
+        info!(
+            "{}ZMQ subscribe stream ended, shutting down",
+            self.format_name()
+        );
+        Ok(())
     }
 
     fn format_name(&self) -> String {
@@ -93,7 +99,7 @@ impl InputServer for InputServerOptions<Subscribe> {
 
 #[async_trait]
 impl OutputServer for OutputServerOptions<Publish> {
-    async fn new(host: &str, port: u16, receiver: Receiver<String>) -> Result<Self, Error> {
+    async fn new(host: &str, port: u16) -> Result<Self, Error> {
         let address = format!("tcp://{host}:{port}");
         let socket = publish(&Context::new()).connect(&address)?;
 
@@ -101,25 +107,29 @@ impl OutputServer for OutputServerOptions<Publish> {
             host: host.to_string(),
             port,
             socket,
-            receiver,
         })
     }
 
-    async fn watch_queue(mut self) {
-        while let Some(message) = self.receiver.recv().await {
+    async fn watch_queue(mut self, receiver: &mut Receiver<String>) -> Result<(), Error> {
+        while let Some(message) = receiver.recv().await {
             debug!("{}Received: {}", self.format_name(), message);
 
             let message_zmq = vec![&message];
 
-            match self.socket.send(message_zmq).await {
-                Ok(()) => trace!("{}Message sent to consumer", self.format_name()),
-                Err(e) => panic!(
+            if let Err(e) = self.socket.send(message_zmq).await {
+                return Err(Error::msg(format!(
                     "{}Error sending message to consumer: {}",
                     self.format_name(),
                     e
-                ),
+                )));
             }
+            trace!("{}Message sent to consumer", self.format_name());
         }
+
+        Err(Error::msg(format!(
+            "{}Input channel closed",
+            self.format_name()
+        )))
     }
 
     fn format_name(&self) -> String {

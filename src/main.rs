@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Fred Clausen
+// Copyright (c) 2024-2026 Fred Clausen
 //
 // Licensed under the MIT license: https://opensource.org/licenses/MIT
 // Permission is granted to use, copy, modify, and redistribute the work.
@@ -29,13 +29,142 @@ use clap::Parser;
 use sdre_rust_logging::SetupLogging;
 use sdre_stubborn_io::tokio::StubbornIo;
 use serverconfig::InputServerOptions;
+use std::time::Duration;
 use tmq::publish::Publish;
 use tmq::subscribe::Subscribe;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::Sender;
 
 use crate::config::Config;
 use crate::serverconfig::{InputServer, OutputServer, OutputServerOptions, SocketType};
+
+/// Spawn a supervised input server. `output_sender` is the master Sender clone
+/// for the input->output bridge channel (None when no output is configured).
+/// `stats_sender` is the master Sender clone for the stats channel. Both are
+/// cloned for every (re)spawn so the master copies in main keep the channels
+/// alive even when the input task dies.
+///
+/// Backoff: 1s, 2s, 4s, 8s, 16s, 32s, then capped at 60s. Resets to 1s after
+/// the task survives for at least 60s, so a transient failure doesn't keep us
+/// in the slow-retry regime forever.
+fn spawn_input(
+    proto: SocketType,
+    host: String,
+    port: u16,
+    output_sender: Option<Sender<String>>,
+    stats_sender: Sender<u8>,
+) {
+    let label = format!("input/{host}:{port}");
+    tokio::spawn(async move {
+        let mut backoff_secs: u64 = 1;
+        loop {
+            let started = tokio::time::Instant::now();
+            let output_sender = output_sender.clone();
+            let stats_sender = stats_sender.clone();
+            let result: Result<()> = async {
+                match &proto {
+                    SocketType::Tcp => {
+                        let server = InputServerOptions::<StubbornIo<TcpStream>>::new(
+                            &host,
+                            port,
+                            output_sender,
+                            stats_sender,
+                        )
+                        .await?;
+                        server.receive_message().await?;
+                        Ok(())
+                    }
+                    SocketType::Udp => {
+                        let server = InputServerOptions::<tokio::net::UdpSocket>::new(
+                            &host,
+                            port,
+                            output_sender,
+                            stats_sender,
+                        )
+                        .await?;
+                        server.receive_message().await?;
+                        Ok(())
+                    }
+                    SocketType::Zmq => {
+                        let server = InputServerOptions::<Subscribe>::new(
+                            &host,
+                            port,
+                            output_sender,
+                            stats_sender,
+                        )
+                        .await?;
+                        server.receive_message().await?;
+                        Ok(())
+                    }
+                }
+            }
+            .await;
+
+            match result {
+                Ok(()) => info!("[SUPERVISOR][{label}] Task exited gracefully; restarting"),
+                Err(e) => error!("[SUPERVISOR][{label}] Task failed: {e}; restarting"),
+            }
+
+            if started.elapsed() >= Duration::from_secs(60) {
+                backoff_secs = 1;
+            }
+
+            info!("[SUPERVISOR][{label}] Sleeping {backoff_secs}s before restart");
+            tokio::time::sleep(Duration::from_secs(backoff_secs)).await;
+            backoff_secs = (backoff_secs.saturating_mul(2)).min(60);
+        }
+    });
+}
+
+/// Spawn a supervised output server. The output `Receiver<String>` is owned by
+/// the supervisor and borrowed mutably into `watch_queue` for each restart.
+/// Because the master `Sender<String>` lives in main, the receiver never sees
+/// a `None` from a closed channel even if the input task dies.
+fn spawn_output(proto: SocketType, host: String, port: u16, mut receiver: mpsc::Receiver<String>) {
+    let label = format!("output/{host}:{port}");
+    tokio::spawn(async move {
+        let mut backoff_secs: u64 = 1;
+        loop {
+            let started = tokio::time::Instant::now();
+            let result: Result<()> = async {
+                match &proto {
+                    SocketType::Tcp => {
+                        let server =
+                            OutputServerOptions::<StubbornIo<TcpStream>>::new(&host, port).await?;
+                        server.watch_queue(&mut receiver).await?;
+                        Ok(())
+                    }
+                    SocketType::Udp => {
+                        let server =
+                            OutputServerOptions::<tokio::net::UdpSocket>::new(&host, port).await?;
+                        server.watch_queue(&mut receiver).await?;
+                        Ok(())
+                    }
+                    SocketType::Zmq => {
+                        let server = OutputServerOptions::<Publish>::new(&host, port).await?;
+                        server.watch_queue(&mut receiver).await?;
+                        Ok(())
+                    }
+                }
+            }
+            .await;
+
+            match result {
+                Ok(()) => info!("[SUPERVISOR][{label}] Task exited gracefully; restarting"),
+                Err(e) => error!("[SUPERVISOR][{label}] Task failed: {e}; restarting"),
+            }
+
+            if started.elapsed() >= Duration::from_secs(60) {
+                backoff_secs = 1;
+            }
+
+            info!("[SUPERVISOR][{label}] Sleeping {backoff_secs}s before restart");
+            tokio::time::sleep(Duration::from_secs(backoff_secs)).await;
+            backoff_secs = (backoff_secs.saturating_mul(2)).min(60);
+        }
+    });
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -43,118 +172,69 @@ async fn main() -> Result<()> {
     config.get_log_level().enable_logging();
     config.show_config();
 
-    let mut input = None;
-    let output = if config.is_destination_set() {
+    // Master bridge channel (input -> output). We retain the master Sender in
+    // main so that even if all input tasks die simultaneously, the output side
+    // does not see a closed channel.
+    let (bridge_sender_master, bridge_receiver) = if config.is_destination_set() {
         info!("Destination set, creating output channel");
-        let (input_sender, input_receiver) = mpsc::channel(32);
-        input = Some(input_sender);
-        Some(input_receiver)
+        let (tx, rx) = mpsc::channel::<String>(32);
+        (Some(tx), Some(rx))
     } else {
-        None
+        (None, None)
     };
 
-    // Create the stats channel
+    // Master stats channel. Same reasoning: the master Sender stays in main so
+    // the stats receiver loop never observes a closed channel due to a dead
+    // input task.
+    let (stats_sender_master, stats_receiver) = mpsc::channel::<u8>(32);
 
-    let (stats_input, stats_output) = mpsc::channel(32);
-    let stats = stats::Stats::new(stats_output);
-
+    let stats = stats::Stats::new(stats_receiver);
     let print_interval = config.get_stat_interval();
-
     tokio::spawn(async move {
         stats.run(print_interval);
     });
-    // create the input server
 
+    // Spawn the supervised input.
     info!("Creating input server");
-    match SocketType::try_from(config.get_source_protocol()) {
-        Ok(SocketType::Tcp) => {
-            let input_server = InputServerOptions::<StubbornIo<TcpStream>>::new(
-                config.get_source_host(),
-                config.get_source_port(),
-                input,
-                stats_input,
-            )
-            .await?;
+    let input_proto = SocketType::try_from(config.get_source_protocol())
+        .map_err(|e| anyhow::anyhow!("Error parsing source protocol: {e}"))?;
+    spawn_input(
+        input_proto,
+        config.get_source_host().to_string(),
+        config.get_source_port(),
+        bridge_sender_master.clone(),
+        stats_sender_master.clone(),
+    );
 
-            tokio::spawn(async move {
-                input_server.receive_message().await;
-            });
-        }
-        Ok(SocketType::Udp) => {
-            let input_server = InputServerOptions::<tokio::net::UdpSocket>::new(
-                config.get_source_host(),
-                config.get_source_port(),
-                input,
-                stats_input,
-            )
-            .await?;
-
-            tokio::spawn(async move {
-                input_server.receive_message().await;
-            });
-        }
-        Ok(SocketType::Zmq) => {
-            let input_server = InputServerOptions::<Subscribe>::new(
-                config.get_source_host(),
-                config.get_source_port(),
-                input,
-                stats_input,
-            )
-            .await?;
-
-            tokio::spawn(async move {
-                input_server.receive_message().await;
-            });
-        }
-        Err(e) => {
-            panic!("Error creating input server: {e}");
-        }
-    }
-
-    // create the output server
-
+    // Spawn the supervised output, if configured.
     if config.is_destination_set() {
-        let output = output.unwrap_or_else(|| panic!("Output channel not created"));
-
-        let host = config.get_destination_host().clone().unwrap();
-        let port = config.get_destination_port().unwrap();
-        let proto = config.get_destination_protocol().clone().unwrap();
+        let rx = bridge_receiver.expect("bridge receiver should exist when destination is set");
+        let host = config
+            .get_destination_host()
+            .clone()
+            .expect("destination host should be set");
+        let port = config
+            .get_destination_port()
+            .expect("destination port should be set");
+        let proto_str = config
+            .get_destination_protocol()
+            .clone()
+            .expect("destination protocol should be set");
+        let output_proto = SocketType::try_from(proto_str)
+            .map_err(|e| anyhow::anyhow!("Error parsing destination protocol: {e}"))?;
 
         info!("Creating output server");
-
-        match SocketType::try_from(proto) {
-            Ok(SocketType::Tcp) => {
-                let output_server =
-                    OutputServerOptions::<StubbornIo<TcpStream>>::new(&host, port, output).await?;
-
-                tokio::spawn(async move {
-                    output_server.watch_queue().await;
-                });
-            }
-            Ok(SocketType::Udp) => {
-                let output_server =
-                    OutputServerOptions::<tokio::net::UdpSocket>::new(&host, port, output).await?;
-
-                tokio::spawn(async move {
-                    output_server.watch_queue().await;
-                });
-            }
-            Ok(SocketType::Zmq) => {
-                let output_server =
-                    OutputServerOptions::<Publish>::new(&host, port, output).await?;
-
-                tokio::spawn(async move {
-                    output_server.watch_queue().await;
-                });
-            }
-
-            Err(e) => {
-                panic!("Error creating output server: {e}");
-            }
-        }
+        spawn_output(output_proto, host, port, rx);
     }
 
+    // Keep master Senders alive for the lifetime of the process by holding
+    // them here. Without these bindings the compiler would drop them at the
+    // end of `main`'s setup and close the channels we just worked to keep
+    // open.
+    let _bridge_keepalive = bridge_sender_master;
+    let _stats_keepalive = stats_sender_master;
+
     loop {
-        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+        tokio::time::sleep(Duration::from_secs(10)).await;
     }
 }

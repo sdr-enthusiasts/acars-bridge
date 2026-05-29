@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Fred Clausen
+// Copyright (c) 2024-2026 Fred Clausen
 //
 // Licensed under the MIT license: https://opensource.org/licenses/MIT
 // Permission is granted to use, copy, modify, and redistribute the work.
@@ -66,7 +66,6 @@ pub struct OutputServerOptions<T> {
     pub host: String,
     pub port: u16,
     pub socket: T,
-    pub receiver: Receiver<String>,
 }
 
 #[async_trait]
@@ -79,15 +78,15 @@ pub trait InputServer {
     ) -> Result<Self, Error>
     where
         Self: Sized;
-    async fn receive_message(self);
+    async fn receive_message(self) -> Result<(), Error>;
     fn format_name(&self) -> String;
 }
 
 #[async_trait]
 pub trait OutputServer {
-    async fn new(host: &str, port: u16, receiver: Receiver<String>) -> Result<Self, Error>
+    async fn new(host: &str, port: u16) -> Result<Self, Error>
     where
         Self: Sized;
-    async fn watch_queue(self);
+    async fn watch_queue(self, receiver: &mut Receiver<String>) -> Result<(), Error>;
     fn format_name(&self) -> String;
 }

@@ -1,6 +1,6 @@
 use crate::serverconfig::InputServer;
 use crate::serverconfig::InputServerOptions;
-// Copyright (c) 2024 Fred Clausen
+// Copyright (c) 2024-2026 Fred Clausen
 //
 // Licensed under the MIT license: https://opensource.org/licenses/MIT
 // Permission is granted to use, copy, modify, and redistribute the work.
@@ -32,7 +32,7 @@ impl InputServer for InputServerOptions<UdpSocket> {
         })
     }
 
-    async fn receive_message(self) {
+    async fn receive_message(self) -> Result<(), Error> {
         let mut buf = [0; 8192];
         loop {
             match self.socket.recv_from(&mut buf).await {
@@ -47,28 +47,33 @@ impl InputServer for InputServerOptions<UdpSocket> {
                     debug!("{}Received: {}", self.format_name(), composed_message);
 
                     if let Some(sender) = &self.sender {
-                        match sender.send(composed_message.to_string()).await {
-                            Ok(()) => {
-                                trace!("{}Message sent to sender channel", self.format_name());
-                            }
-                            Err(e) => panic!(
-                                "{}Error sending message to sender channel: {}",
+                        if let Err(e) = sender.send(composed_message.to_string()).await {
+                            return Err(Error::msg(format!(
+                                "{}Output channel closed: {}",
                                 self.format_name(),
                                 e
-                            ),
+                            )));
                         }
+                        trace!("{}Message sent to sender channel", self.format_name());
                     }
 
-                    match self.stats.send(1).await {
-                        Ok(()) => trace!("{}Stats sent to stats channel", self.format_name()),
-                        Err(e) => panic!(
-                            "{}Error sending to stats channel: {}",
+                    if let Err(e) = self.stats.send(1).await {
+                        return Err(Error::msg(format!(
+                            "{}Stats channel closed: {}",
                             self.format_name(),
                             e
-                        ),
+                        )));
                     }
+                    trace!("{}Stats sent to stats channel", self.format_name());
                 }
-                Err(e) => error!("{}Error: {:?}", self.format_name(), e),
+                Err(e) => {
+                    // Bind/socket-level errors are fatal for this task; let supervisor rebind.
+                    return Err(Error::msg(format!(
+                        "{}Socket recv error: {:?}",
+                        self.format_name(),
+                        e
+                    )));
+                }
             }
         }
     }
@@ -80,21 +85,20 @@ impl InputServer for InputServerOptions<UdpSocket> {
 
 #[async_trait]
 impl OutputServer for OutputServerOptions<UdpSocket> {
-    async fn new(host: &str, port: u16, receiver: Receiver<String>) -> Result<Self, Error> {
+    async fn new(host: &str, port: u16) -> Result<Self, Error> {
         let socket = UdpSocket::bind("0.0.0.0:0".to_string()).await?;
         Ok(Self {
             host: host.to_string(),
             port,
             socket,
-            receiver,
         })
     }
 
-    async fn watch_queue(mut self) {
+    async fn watch_queue(self, receiver: &mut Receiver<String>) -> Result<(), Error> {
         let max_size = 8192;
 
         loop {
-            match self.receiver.recv().await {
+            match receiver.recv().await {
                 Some(message) => {
                     debug!("{}Received: {}", self.format_name(), message);
 
@@ -121,22 +125,22 @@ impl OutputServer for OutputServerOptions<UdpSocket> {
                                 offset = end;
                             }
                             Err(e) => {
-                                // Other sender types panic at this point, but UDP is a best effort protocol, so we just log the error and continue
-
+                                // UDP is a best effort protocol; log and drop the rest of this datagram.
                                 error!(
                                     "{}Error sending message to consumer: {}",
                                     self.format_name(),
                                     e
                                 );
+                                break;
                             }
                         }
                     }
                 }
                 None => {
-                    panic!(
-                        "{}Error receiving message from sender input channel",
+                    return Err(Error::msg(format!(
+                        "{}Input channel closed",
                         self.format_name()
-                    );
+                    )));
                 }
             }
         }

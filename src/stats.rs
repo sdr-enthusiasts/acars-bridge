@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Fred Clausen
+// Copyright (c) 2024-2026 Fred Clausen
 //
 // Licensed under the MIT license: https://opensource.org/licenses/MIT
 // Permission is granted to use, copy, modify, and redistribute the work.
@@ -47,17 +47,14 @@ impl Stats {
     }
 
     pub async fn watch_message_queue(&mut self) {
-        loop {
-            match self.receiver.recv().await {
-                Some(_) => {
-                    trace!("[STATS] Received message from queue");
-                    self.increment().await;
-                }
-                None => {
-                    error!("[STATS] Error receiving message from queue");
-                }
-            }
+        while self.receiver.recv().await.is_some() {
+            trace!("[STATS] Received message from queue");
+            self.increment().await;
         }
+        // All Senders have been dropped. This should not happen under normal
+        // operation because main retains a master Sender, but if it does we
+        // exit cleanly instead of spinning on the closed channel.
+        warn!("[STATS] Stats channel closed (all senders dropped); exiting stats watcher");
     }
 
     pub async fn increment(&mut self) {
