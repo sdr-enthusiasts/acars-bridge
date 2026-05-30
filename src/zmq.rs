@@ -85,11 +85,14 @@ impl InputServer for InputServerOptions<Subscribe> {
             trace!("{}Stats sent to channel", self.format_name());
         }
 
-        info!(
-            "{}ZMQ subscribe stream ended, shutting down",
+        // A tmq Subscribe stream should not normally end on its own. If we
+        // get here, something unexpected happened (context dropped, etc.).
+        // Surface as Err so the supervisor logs at error! level rather than
+        // info! and treats it as an abnormal restart.
+        Err(Error::msg(format!(
+            "{}ZMQ subscribe stream ended unexpectedly",
             self.format_name()
-        );
-        Ok(())
+        )))
     }
 
     fn format_name(&self) -> String {
