@@ -172,12 +172,14 @@ async fn main() -> Result<()> {
     config.get_log_level().enable_logging();
     config.show_config();
 
+    let channel_capacity = config.get_channel_capacity();
+
     // Master bridge channel (input -> output). We retain the master Sender in
     // main so that even if all input tasks die simultaneously, the output side
     // does not see a closed channel.
     let (bridge_sender_master, bridge_receiver) = if config.is_destination_set() {
         info!("Destination set, creating output channel");
-        let (tx, rx) = mpsc::channel::<String>(32);
+        let (tx, rx) = mpsc::channel::<String>(channel_capacity);
         (Some(tx), Some(rx))
     } else {
         (None, None)
@@ -186,7 +188,7 @@ async fn main() -> Result<()> {
     // Master stats channel. Same reasoning: the master Sender stays in main so
     // the stats receiver loop never observes a closed channel due to a dead
     // input task.
-    let (stats_sender_master, stats_receiver) = mpsc::channel::<u8>(32);
+    let (stats_sender_master, stats_receiver) = mpsc::channel::<u8>(channel_capacity);
 
     let stats = stats::Stats::new(stats_receiver);
     let print_interval = config.get_stat_interval();
