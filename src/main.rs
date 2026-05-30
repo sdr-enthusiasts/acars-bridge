@@ -216,7 +216,7 @@ async fn main() -> Result<()> {
             .expect("destination port should be set");
         let proto_str = config
             .get_destination_protocol()
-            .clone()
+            .as_deref()
             .expect("destination protocol should be set");
         let output_proto = SocketType::try_from(proto_str)
             .map_err(|e| anyhow::anyhow!("Error parsing destination protocol: {e}"))?;
