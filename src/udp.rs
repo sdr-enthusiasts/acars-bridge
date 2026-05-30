@@ -43,7 +43,23 @@ impl InputServer for InputServerOptions<UdpSocket> {
                         continue;
                     }
 
-                    let composed_message = String::from_utf8_lossy(&buf[..size]);
+                    // ACARS payloads are 7-bit ASCII in practice, but warn
+                    // loudly if non-UTF-8 bytes arrive so silent corruption
+                    // is visible. Fall back to lossy conversion so the
+                    // bridge still forwards something rather than dropping
+                    // the message entirely.
+                    let composed_message = match std::str::from_utf8(&buf[..size]) {
+                        Ok(s) => std::borrow::Cow::Borrowed(s),
+                        Err(e) => {
+                            warn!(
+                                "{}Non-UTF-8 datagram ({} bytes, error at byte {}); using lossy conversion",
+                                self.format_name(),
+                                size,
+                                e.valid_up_to()
+                            );
+                            String::from_utf8_lossy(&buf[..size])
+                        }
+                    };
 
                     debug!("{}Received: {}", self.format_name(), composed_message);
 

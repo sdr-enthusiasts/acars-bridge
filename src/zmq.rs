@@ -52,10 +52,25 @@ impl InputServer for InputServerOptions<Subscribe> {
                 }
             };
 
+            // Join all frames with spaces. ACARS payloads are 7-bit ASCII in
+            // practice, but warn loudly if a frame contains non-UTF-8 bytes
+            // so silent corruption is visible. Fall back to lossy conversion
+            // so the bridge still forwards something.
             let composed_message = message
                 .iter()
-                .map(|item| item.as_str().unwrap_or("invalid text"))
-                .collect::<Vec<&str>>()
+                .map(|item| match std::str::from_utf8(item) {
+                    Ok(s) => std::borrow::Cow::Borrowed(s),
+                    Err(e) => {
+                        warn!(
+                            "{}Non-UTF-8 frame ({} bytes, error at byte {}); using lossy conversion",
+                            self.format_name(),
+                            item.len(),
+                            e.valid_up_to()
+                        );
+                        String::from_utf8_lossy(item)
+                    }
+                })
+                .collect::<Vec<_>>()
                 .join(" ");
 
             debug!("{}Received: {}", self.format_name(), composed_message);
