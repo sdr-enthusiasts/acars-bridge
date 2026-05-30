@@ -45,7 +45,7 @@ impl Stats {
         });
     }
 
-    pub async fn watch_message_queue(&mut self) {
+    async fn watch_message_queue(&mut self) {
         while self.receiver.recv().await.is_some() {
             trace!("[STATS] Received message from queue");
             self.increment();
@@ -56,7 +56,7 @@ impl Stats {
         warn!("[STATS] Stats channel closed (all senders dropped); exiting stats watcher");
     }
 
-    pub fn increment(&self) {
+    fn increment(&self) {
         self.total_all_time.fetch_add(1, Ordering::Relaxed);
         self.total_since_last.fetch_add(1, Ordering::Relaxed);
     }
@@ -72,7 +72,7 @@ impl Stats {
     }
 }
 
-pub async fn print_stats_to_console(
+async fn print_stats_to_console(
     total_all_time_context: Arc<AtomicU64>,
     total_since_last_context: Arc<AtomicU64>,
     print_interval: u64,
