@@ -31,7 +31,7 @@ pub struct Config {
     #[clap(long, env = "AB_DESTINATION_PROTOCOL")]
     pub destination_protocol: Option<String>,
 
-    #[clap(long, env = "AB_STAT_INTERVAL", default_value = "5")]
+    #[clap(long, env = "AB_STAT_INTERVAL", default_value = "5", value_parser = clap::value_parser!(u64).range(1..))]
     pub stat_interval: u64,
 }
 
