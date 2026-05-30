@@ -78,8 +78,10 @@ pub async fn print_stats_to_console(
     print_interval: u64,
 ) {
     loop {
-        // print interval is in minutes, so we need to convert it to seconds
-        let print_interval_in_seconds = print_interval * 60;
+        // print interval is in minutes, so we need to convert it to seconds.
+        // saturating_mul guards against u64 overflow if the user passes a
+        // pathological value (a debug-mode panic / release-mode wrap).
+        let print_interval_in_seconds = print_interval.saturating_mul(60);
         tokio::time::sleep(tokio::time::Duration::from_secs(print_interval_in_seconds)).await;
         let total_all_time = total_all_time_context.load(Ordering::Relaxed);
         // Atomically swap the per-interval counter to 0 so increments that
