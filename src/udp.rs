@@ -8,7 +8,8 @@ use crate::serverconfig::InputServerOptions;
 
 use anyhow::{Error, Result};
 use async_trait::async_trait;
-use tokio::net::UdpSocket;
+use std::net::SocketAddr;
+use tokio::net::{ToSocketAddrs, UdpSocket};
 use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::serverconfig::OutputServer;
@@ -86,7 +87,14 @@ impl InputServer for InputServerOptions<UdpSocket> {
 #[async_trait]
 impl OutputServer for OutputServerOptions<UdpSocket> {
     async fn new(host: &str, port: u16) -> Result<Self, Error> {
-        let socket = UdpSocket::bind("0.0.0.0:0".to_string()).await?;
+        let socket = UdpSocket::bind("0.0.0.0:0").await?;
+        // Validate that the destination resolves at construction time so we
+        // fail fast (and let the supervisor back off + retry) rather than
+        // discovering it on the first datagram. The resolved address is
+        // recomputed once in watch_queue and reused for every send_to.
+        resolve_first(format!("{host}:{port}"))
+            .await
+            .map_err(|e| Error::msg(format!("[UDP Output {host}:{port}] Cannot resolve: {e}")))?;
         Ok(Self {
             host: host.to_string(),
             port,
@@ -95,7 +103,22 @@ impl OutputServer for OutputServerOptions<UdpSocket> {
     }
 
     async fn watch_queue(self, receiver: &mut Receiver<String>) -> Result<(), Error> {
-        let dest = format!("{}:{}", self.host, self.port);
+        // Resolve the destination once. The previous implementation passed a
+        // host:port string to send_to on every datagram, which forced DNS
+        // resolution per call. Resolving once at task start eliminates that
+        // overhead; the supervisor will rebuild this task (and re-resolve)
+        // on any send failure or restart.
+        let dest = resolve_first(format!("{}:{}", self.host, self.port))
+            .await
+            .map_err(|e| {
+                Error::msg(format!(
+                    "{}Cannot resolve destination: {}",
+                    self.format_name(),
+                    e
+                ))
+            })?;
+        debug!("{}Resolved destination to {}", self.format_name(), dest);
+
         loop {
             match receiver.recv().await {
                 Some(message) => {
@@ -161,4 +184,14 @@ impl OutputServer for OutputServerOptions<UdpSocket> {
     fn format_name(&self) -> String {
         format!("[UDP Output {}:{}] ", self.host, self.port)
     }
+}
+
+/// Resolve the given host:port to a single `SocketAddr`, taking the first entry
+/// from the iterator. Returns an error if resolution succeeds but yields no
+/// addresses.
+async fn resolve_first<A: ToSocketAddrs>(addr: A) -> Result<SocketAddr, Error> {
+    tokio::net::lookup_host(addr)
+        .await?
+        .next()
+        .ok_or_else(|| Error::msg("DNS resolution returned no addresses"))
 }
