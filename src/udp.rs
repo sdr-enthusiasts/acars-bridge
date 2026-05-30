@@ -96,7 +96,7 @@ impl InputServer for InputServerOptions<UdpSocket> {
     }
 
     fn format_name(&self) -> String {
-        format!("[UDP Input {}] ", self.port)
+        format!("[UDP Input {}:{}] ", self.host, self.port)
     }
 }
 
