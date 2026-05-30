@@ -35,6 +35,8 @@ use tmq::subscribe::Subscribe;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
+use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 
 use crate::config::Config;
 use crate::serverconfig::{InputServer, OutputServer, OutputServerOptions, SocketType};
@@ -48,21 +50,26 @@ use crate::serverconfig::{InputServer, OutputServer, OutputServerOptions, Socket
 /// Backoff: 1s, 2s, 4s, 8s, 16s, 32s, then capped at 60s. Resets to 1s after
 /// the task survives for at least 60s, so a transient failure doesn't keep us
 /// in the slow-retry regime forever.
+///
+/// On `cancel`, the supervisor aborts any in-flight inner task and exits its
+/// loop. The returned `JoinHandle` resolves once the supervisor has exited.
 fn spawn_input(
     proto: SocketType,
     host: String,
     port: u16,
     output_sender: Option<Sender<String>>,
     stats_sender: Sender<u8>,
-) {
+    cancel: CancellationToken,
+) -> JoinHandle<()> {
     let label = format!("input/{host}:{port}");
     tokio::spawn(async move {
         let mut backoff_secs: u64 = 1;
-        loop {
+        while !cancel.is_cancelled() {
             let started = tokio::time::Instant::now();
             let output_sender = output_sender.clone();
             let stats_sender = stats_sender.clone();
-            let result: Result<()> = async {
+
+            let work = async {
                 match &proto {
                     SocketType::Tcp => {
                         let server = InputServerOptions::<StubbornIo<TcpStream>>::new(
@@ -72,8 +79,7 @@ fn spawn_input(
                             stats_sender,
                         )
                         .await?;
-                        server.receive_message().await?;
-                        Ok(())
+                        server.receive_message().await
                     }
                     SocketType::Udp => {
                         let server = InputServerOptions::<tokio::net::UdpSocket>::new(
@@ -83,8 +89,7 @@ fn spawn_input(
                             stats_sender,
                         )
                         .await?;
-                        server.receive_message().await?;
-                        Ok(())
+                        server.receive_message().await
                     }
                     SocketType::Zmq => {
                         let server = InputServerOptions::<Subscribe>::new(
@@ -94,16 +99,28 @@ fn spawn_input(
                             stats_sender,
                         )
                         .await?;
-                        server.receive_message().await?;
-                        Ok(())
+                        server.receive_message().await
                     }
                 }
-            }
-            .await;
+            };
+
+            let result: Option<Result<()>> = tokio::select! {
+                biased;
+                () = cancel.cancelled() => None,
+                r = work => Some(r),
+            };
 
             match result {
-                Ok(()) => info!("[SUPERVISOR][{label}] Task exited gracefully; restarting"),
-                Err(e) => error!("[SUPERVISOR][{label}] Task failed: {e}; restarting"),
+                None => {
+                    info!("[SUPERVISOR][{label}] Cancelled; exiting");
+                    break;
+                }
+                Some(Ok(())) => {
+                    info!("[SUPERVISOR][{label}] Task exited gracefully; restarting");
+                }
+                Some(Err(e)) => {
+                    error!("[SUPERVISOR][{label}] Task failed: {e}; restarting");
+                }
             }
 
             if started.elapsed() >= Duration::from_secs(60) {
@@ -111,48 +128,77 @@ fn spawn_input(
             }
 
             info!("[SUPERVISOR][{label}] Sleeping {backoff_secs}s before restart");
-            tokio::time::sleep(Duration::from_secs(backoff_secs)).await;
+            tokio::select! {
+                biased;
+                () = cancel.cancelled() => {
+                    info!("[SUPERVISOR][{label}] Cancelled during backoff; exiting");
+                    break;
+                }
+                () = tokio::time::sleep(Duration::from_secs(backoff_secs)) => {}
+            }
             backoff_secs = (backoff_secs.saturating_mul(2)).min(60);
         }
-    });
+    })
 }
 
 /// Spawn a supervised output server. The output `Receiver<String>` is owned by
 /// the supervisor and borrowed mutably into `watch_queue` for each restart.
-/// Because the master `Sender<String>` lives in main, the receiver never sees
-/// a `None` from a closed channel even if the input task dies.
-fn spawn_output(proto: SocketType, host: String, port: u16, mut receiver: mpsc::Receiver<String>) {
+/// Because the master `Sender<String>` lives in main, the receiver normally
+/// never sees a `None`. During shutdown, main drops its master Sender after
+/// the input supervisors exit, which lets the output drain naturally before
+/// receiving `None` and exiting.
+///
+/// On `cancel`, the supervisor aborts any in-flight inner task and exits its
+/// loop. The returned `JoinHandle` resolves once the supervisor has exited.
+fn spawn_output(
+    proto: SocketType,
+    host: String,
+    port: u16,
+    mut receiver: mpsc::Receiver<String>,
+    cancel: CancellationToken,
+) -> JoinHandle<()> {
     let label = format!("output/{host}:{port}");
     tokio::spawn(async move {
         let mut backoff_secs: u64 = 1;
-        loop {
+        while !cancel.is_cancelled() {
             let started = tokio::time::Instant::now();
-            let result: Result<()> = async {
+
+            let work = async {
                 match &proto {
                     SocketType::Tcp => {
                         let server =
                             OutputServerOptions::<StubbornIo<TcpStream>>::new(&host, port).await?;
-                        server.watch_queue(&mut receiver).await?;
-                        Ok(())
+                        server.watch_queue(&mut receiver).await
                     }
                     SocketType::Udp => {
                         let server =
                             OutputServerOptions::<tokio::net::UdpSocket>::new(&host, port).await?;
-                        server.watch_queue(&mut receiver).await?;
-                        Ok(())
+                        server.watch_queue(&mut receiver).await
                     }
                     SocketType::Zmq => {
                         let server = OutputServerOptions::<Publish>::new(&host, port).await?;
-                        server.watch_queue(&mut receiver).await?;
-                        Ok(())
+                        server.watch_queue(&mut receiver).await
                     }
                 }
-            }
-            .await;
+            };
+
+            let result: Option<Result<()>> = tokio::select! {
+                biased;
+                () = cancel.cancelled() => None,
+                r = work => Some(r),
+            };
 
             match result {
-                Ok(()) => info!("[SUPERVISOR][{label}] Task exited gracefully; restarting"),
-                Err(e) => error!("[SUPERVISOR][{label}] Task failed: {e}; restarting"),
+                None => {
+                    info!("[SUPERVISOR][{label}] Cancelled; exiting");
+                    break;
+                }
+                Some(Ok(())) => {
+                    info!("[SUPERVISOR][{label}] Task exited gracefully; restarting");
+                }
+                Some(Err(e)) => {
+                    error!("[SUPERVISOR][{label}] Task failed: {e}; restarting");
+                }
             }
 
             if started.elapsed() >= Duration::from_secs(60) {
@@ -160,10 +206,49 @@ fn spawn_output(proto: SocketType, host: String, port: u16, mut receiver: mpsc::
             }
 
             info!("[SUPERVISOR][{label}] Sleeping {backoff_secs}s before restart");
-            tokio::time::sleep(Duration::from_secs(backoff_secs)).await;
+            tokio::select! {
+                biased;
+                () = cancel.cancelled() => {
+                    info!("[SUPERVISOR][{label}] Cancelled during backoff; exiting");
+                    break;
+                }
+                () = tokio::time::sleep(Duration::from_secs(backoff_secs)) => {}
+            }
             backoff_secs = (backoff_secs.saturating_mul(2)).min(60);
         }
-    });
+    })
+}
+
+/// Wait for either SIGINT (Ctrl-C) or, on Unix, SIGTERM. Container
+/// orchestrators (docker stop, systemd) typically send SIGTERM, which the
+/// default `tokio::signal::ctrl_c()` alone does not catch.
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        if let Err(e) = tokio::signal::ctrl_c().await {
+            error!("Failed to install Ctrl-C handler: {e}");
+        }
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut sig) => {
+                sig.recv().await;
+            }
+            Err(e) => {
+                error!("Failed to install SIGTERM handler: {e}");
+                std::future::pending::<()>().await;
+            }
+        }
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        () = ctrl_c => info!("[SHUTDOWN] Received SIGINT"),
+        () = terminate => info!("[SHUTDOWN] Received SIGTERM"),
+    }
 }
 
 #[tokio::main]
@@ -194,20 +279,27 @@ async fn main() -> Result<()> {
     let print_interval = config.get_stat_interval();
     stats.run(print_interval);
 
+    // One CancellationToken governs the whole process. Input supervisors and
+    // the output supervisor each get a clone. On shutdown, main cancels the
+    // token and waits for supervisors in a specific order to drain the
+    // pipeline.
+    let cancel = CancellationToken::new();
+
     // Spawn the supervised input.
     info!("Creating input server");
     let input_proto = SocketType::try_from(config.get_source_protocol())
         .map_err(|e| anyhow::anyhow!("Error parsing source protocol: {e}"))?;
-    spawn_input(
+    let input_handle = spawn_input(
         input_proto,
         config.get_source_host().to_string(),
         config.get_source_port(),
         bridge_sender_master.clone(),
         stats_sender_master.clone(),
+        cancel.clone(),
     );
 
     // Spawn the supervised output, if configured.
-    if config.is_destination_set() {
+    let output_handle = if config.is_destination_set() {
         let rx = bridge_receiver.expect("bridge receiver should exist when destination is set");
         let host = config
             .get_destination_host()
@@ -224,17 +316,41 @@ async fn main() -> Result<()> {
             .map_err(|e| anyhow::anyhow!("Error parsing destination protocol: {e}"))?;
 
         info!("Creating output server");
-        spawn_output(output_proto, host, port, rx);
+        Some(spawn_output(output_proto, host, port, rx, cancel.clone()))
+    } else {
+        None
+    };
+
+    // Wait for a shutdown signal.
+    shutdown_signal().await;
+
+    info!("[SHUTDOWN] Cancelling supervisors");
+    cancel.cancel();
+
+    // Drain order:
+    //
+    //   1. Wait for the input supervisor to exit. Its inner task is aborted
+    //      via the cancel token, and its loop breaks before it can respawn.
+    //   2. Drop the master bridge Sender. Now no Sender for the bridge
+    //      channel exists; the output's recv() will return None once the
+    //      buffered messages are drained.
+    //   3. Wait for the output supervisor to drain and exit.
+    //   4. Drop the master stats Sender. The stats watcher's recv() will
+    //      return None and it exits cleanly.
+    if let Err(e) = input_handle.await {
+        error!("[SHUTDOWN] Input supervisor join error: {e}");
     }
 
-    // Keep master Senders alive for the lifetime of the process by holding
-    // them here. Without these bindings the compiler would drop them at the
-    // end of `main`'s setup and close the channels we just worked to keep
-    // open.
-    let _bridge_keepalive = bridge_sender_master;
-    let _stats_keepalive = stats_sender_master;
+    drop(bridge_sender_master);
 
-    loop {
-        tokio::time::sleep(Duration::from_secs(10)).await;
+    if let Some(handle) = output_handle
+        && let Err(e) = handle.await
+    {
+        error!("[SHUTDOWN] Output supervisor join error: {e}");
     }
+
+    drop(stats_sender_master);
+
+    info!("[SHUTDOWN] Clean exit");
+    Ok(())
 }
