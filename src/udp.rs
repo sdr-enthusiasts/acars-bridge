@@ -95,44 +95,56 @@ impl OutputServer for OutputServerOptions<UdpSocket> {
     }
 
     async fn watch_queue(self, receiver: &mut Receiver<String>) -> Result<(), Error> {
-        let max_size = 8192;
-
+        let dest = format!("{}:{}", self.host, self.port);
         loop {
             match receiver.recv().await {
                 Some(message) => {
                     debug!("{}Received: {}", self.format_name(), message);
 
-                    // convert string to bytes
                     // verify we have a newline
                     let message = if message.ends_with('\n') {
                         message
                     } else {
                         format!("{message}\n")
                     };
-                    let bytes = message.as_bytes();
-                    // send bytes to destination. If the message is larger than the max size, send up to max size and keep sending until the entire message is sent.
-                    let mut offset = 0;
-                    while offset < bytes.len() {
-                        let end = std::cmp::min(offset + max_size, bytes.len());
 
-                        match self
-                            .socket
-                            .send_to(&bytes[offset..end], format!("{}:{}", self.host, self.port))
-                            .await
-                        {
-                            Ok(_) => {
-                                trace!("{}Message sent to consumer", self.format_name(),);
-                                offset = end;
-                            }
-                            Err(e) => {
-                                // UDP is a best effort protocol; log and drop the rest of this datagram.
-                                error!(
-                                    "{}Error sending message to consumer: {}",
-                                    self.format_name(),
-                                    e
-                                );
-                                break;
-                            }
+                    // Send the entire message as a single UDP datagram. The
+                    // kernel handles IP fragmentation transparently for
+                    // messages larger than the path MTU; the receiver's
+                    // kernel reassembles before delivery. The previous
+                    // application-level chunking produced multiple
+                    // independent datagrams that the receiver had no way to
+                    // recombine, silently corrupting any message > 8192
+                    // bytes.
+                    //
+                    // The hard ceiling here is the UDP payload max
+                    // (~65507 bytes); messages larger than that produce
+                    // EMSGSIZE, which we log and drop.
+                    let bytes = message.as_bytes();
+                    match self.socket.send_to(bytes, &dest).await {
+                        Ok(n) if n < bytes.len() => {
+                            // Per POSIX, a UDP send_to either transmits the
+                            // entire datagram or fails. A short return would
+                            // indicate a kernel anomaly worth flagging.
+                            warn!(
+                                "{}Short UDP send: {} of {} bytes",
+                                self.format_name(),
+                                n,
+                                bytes.len()
+                            );
+                        }
+                        Ok(_) => trace!("{}Message sent to consumer", self.format_name()),
+                        Err(e) => {
+                            // UDP is best-effort; log and continue. Common
+                            // causes: EMSGSIZE (oversized message),
+                            // ENETUNREACH, ICMP-driven errors from a prior
+                            // datagram.
+                            error!(
+                                "{}Error sending message ({} bytes) to consumer: {}",
+                                self.format_name(),
+                                bytes.len(),
+                                e
+                            );
                         }
                     }
                 }
