@@ -31,6 +31,14 @@ pub struct Config {
 
     #[clap(long, env = "AB_STAT_INTERVAL", default_value = "5", value_parser = clap::value_parser!(u64).range(1..))]
     pub stat_interval: u64,
+
+    /// Capacity of the internal mpsc channels (bridge input->output and
+    /// stats). Higher values absorb more burstiness before backpressure
+    /// kicks in; lower values backpressure faster. The default is suitable
+    /// for moderate ACARS rates; tune up if you see TCP input
+    /// backpressuring upstream during output stalls.
+    #[clap(long, env = "AB_CHANNEL_CAPACITY", default_value = "1024", value_parser = clap::value_parser!(u64).range(1..))]
+    pub channel_capacity: u64,
 }
 
 impl Config {
@@ -43,6 +51,7 @@ impl Config {
         debug!("Destination Port: {:?}", self.destination_port);
         debug!("Destination Protocol: {:?}", self.destination_protocol);
         debug!("Stat Interval: {}", self.stat_interval);
+        debug!("Channel Capacity: {}", self.channel_capacity);
         debug!("Would start output server: {}", self.is_destination_set());
     }
 
@@ -84,6 +93,14 @@ impl Config {
     #[must_use]
     pub const fn get_stat_interval(&self) -> u64 {
         self.stat_interval
+    }
+
+    #[must_use]
+    pub fn get_channel_capacity(&self) -> usize {
+        // Stored as u64 for clap range validation; mpsc::channel wants usize.
+        // On a 32-bit platform a pathologically huge value gets clamped to
+        // usize::MAX rather than wrapping.
+        usize::try_from(self.channel_capacity).unwrap_or(usize::MAX)
     }
 
     #[must_use]
