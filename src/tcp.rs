@@ -149,7 +149,7 @@ impl OutputServer for OutputServerOptions<StubbornIo<TcpStream>> {
                 format!("{line}\n")
             };
 
-            if let Err(e) = writer.write(line.as_bytes()).await {
+            if let Err(e) = writer.write_all(line.as_bytes()).await {
                 return Err(Error::msg(format!(
                     "{name}Error sending message to consumer: {e}"
                 )));
