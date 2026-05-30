@@ -8,6 +8,7 @@ use anyhow::{Error, Result};
 use async_trait::async_trait;
 use futures::SinkExt;
 use futures::StreamExt;
+use std::sync::OnceLock;
 use tmq::Context;
 use tmq::publish;
 use tmq::publish::Publish;
@@ -20,6 +21,18 @@ use crate::serverconfig::InputServerOptions;
 use crate::serverconfig::OutputServer;
 use crate::serverconfig::OutputServerOptions;
 
+/// Return the process-wide `ZeroMQ` `Context`, creating it on first use.
+///
+/// `ZeroMQ` contexts spin up their own I/O threads and own all socket file
+/// descriptors for the lifetime of the context. They are designed to be
+/// long-lived singletons; creating one per socket (which is what happened
+/// before this lookup, on every supervisor restart) leaks I/O threads and
+/// FDs over time when restarts happen frequently.
+fn zmq_context() -> &'static Context {
+    static CONTEXT: OnceLock<Context> = OnceLock::new();
+    CONTEXT.get_or_init(Context::new)
+}
+
 #[async_trait]
 impl InputServer for InputServerOptions<Subscribe> {
     async fn new(
@@ -29,9 +42,7 @@ impl InputServer for InputServerOptions<Subscribe> {
         stats: Sender<u8>,
     ) -> Result<Self, Error> {
         let address = format!("tcp://{host}:{port}");
-        let socket = subscribe(&Context::new())
-            .connect(&address)?
-            .subscribe(b"")?;
+        let socket = subscribe(zmq_context()).connect(&address)?.subscribe(b"")?;
 
         Ok(Self {
             host: host.to_string(),
@@ -119,7 +130,7 @@ impl InputServer for InputServerOptions<Subscribe> {
 impl OutputServer for OutputServerOptions<Publish> {
     async fn new(host: &str, port: u16) -> Result<Self, Error> {
         let address = format!("tcp://{host}:{port}");
-        let socket = publish(&Context::new()).connect(&address)?;
+        let socket = publish(zmq_context()).connect(&address)?;
 
         Ok(Self {
             host: host.to_string(),
