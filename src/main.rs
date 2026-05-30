@@ -190,9 +190,7 @@ async fn main() -> Result<()> {
 
     let stats = stats::Stats::new(stats_receiver);
     let print_interval = config.get_stat_interval();
-    tokio::spawn(async move {
-        stats.run(print_interval);
-    });
+    stats.run(print_interval);
 
     // Spawn the supervised input.
     info!("Creating input server");
