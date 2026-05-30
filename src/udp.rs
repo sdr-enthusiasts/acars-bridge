@@ -1,5 +1,3 @@
-use crate::serverconfig::InputServer;
-use crate::serverconfig::InputServerOptions;
 // Copyright (c) 2024-2026 Fred Clausen
 //
 // Licensed under the MIT license: https://opensource.org/licenses/MIT
@@ -12,6 +10,8 @@ use std::net::SocketAddr;
 use tokio::net::{ToSocketAddrs, UdpSocket};
 use tokio::sync::mpsc::{Receiver, Sender};
 
+use crate::serverconfig::InputServer;
+use crate::serverconfig::InputServerOptions;
 use crate::serverconfig::OutputServer;
 use crate::serverconfig::OutputServerOptions;
 
