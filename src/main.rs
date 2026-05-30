@@ -4,15 +4,6 @@
 // Permission is granted to use, copy, modify, and redistribute the work.
 // Full license information available in the project LICENSE file.
 
-#![deny(
-    clippy::pedantic,
-    //clippy::cargo,
-    clippy::nursery,
-    clippy::style,
-    clippy::correctness,
-    clippy::all
-)]
-
 #[macro_use]
 extern crate log;
 

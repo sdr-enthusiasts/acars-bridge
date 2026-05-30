@@ -19,3 +19,10 @@ tokio = { version = "1.52.2", features = ["full", "tracing"] }
 tokio-stream = "0.1.18"
 tokio-util = { version = "0.7.18", features = ["full"] }
 zmq = "0.10.0"
+
+[lints.clippy]
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+style = { level = "deny", priority = -1 }
+correctness = { level = "deny", priority = -1 }
+all = { level = "deny", priority = -1 }
