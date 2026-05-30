@@ -67,12 +67,12 @@ impl InputServer for InputServerOptions<UdpSocket> {
                     trace!("{}Stats sent to stats channel", self.format_name());
                 }
                 Err(e) => {
-                    // Bind/socket-level errors are fatal for this task; let supervisor rebind.
-                    return Err(Error::msg(format!(
-                        "{}Socket recv error: {:?}",
-                        self.format_name(),
-                        e
-                    )));
+                    // recv_from can surface transient kernel errors (e.g.
+                    // ICMP-driven ECONNREFUSED from a prior send_to, EINTR)
+                    // that don't warrant tearing down the bound socket. Log
+                    // and keep reading; the supervisor would otherwise rebind
+                    // for no reason and could even race with EADDRINUSE.
+                    error!("{}recv_from error: {:?}", self.format_name(), e);
                 }
             }
         }
