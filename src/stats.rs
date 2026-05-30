@@ -60,16 +60,6 @@ impl Stats {
         self.total_all_time.fetch_add(1, Ordering::Relaxed);
         self.total_since_last.fetch_add(1, Ordering::Relaxed);
     }
-
-    #[must_use]
-    pub fn get_total_all_time(&self) -> u64 {
-        self.total_all_time.load(Ordering::Relaxed)
-    }
-
-    #[must_use]
-    pub fn get_total_last_interval(&self) -> u64 {
-        self.total_since_last.load(Ordering::Relaxed)
-    }
 }
 
 async fn print_stats_to_console(
