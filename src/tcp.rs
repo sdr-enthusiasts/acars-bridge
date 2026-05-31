@@ -4,16 +4,18 @@
 // Permission is granted to use, copy, modify, and redistribute the work.
 // Full license information available in the project LICENSE file.
 
-use anyhow::{Error, Result};
+use anyhow::{Error, Result, anyhow};
 use async_trait::async_trait;
 use sdre_stubborn_io::ReconnectOptions;
 use sdre_stubborn_io::StubbornTcpStream;
 use sdre_stubborn_io::config::DurationIterator;
 use sdre_stubborn_io::tokio::StubbornIo;
+use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::io::BufWriter;
 use tokio::net::TcpStream;
+use tokio::net::lookup_host;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_stream::StreamExt;
 use tokio_util::codec::{Framed, LinesCodec};
@@ -23,17 +25,38 @@ use crate::serverconfig::InputServerOptions;
 use crate::serverconfig::OutputServer;
 use crate::serverconfig::OutputServerOptions;
 
+/// Resolve a `host:port` pair into the first available `SocketAddr`.
+///
+/// `sdre-stubborn-io` 0.7 narrowed `StubbornTcpStream` to take a `SocketAddr`
+/// only, pushing DNS responsibility onto the caller. We resolve once at
+/// connect time; if the destination's DNS changes during a long-running
+/// session the cached `SocketAddr` will be stale. Pre-resolving is the
+/// "bare `SocketAddr`" path explicitly called out as acceptable in the
+/// crate's 0.7.1 migration notes.
+async fn resolve_host(host: &str, port: u16) -> Result<SocketAddr, Error> {
+    let target = format!("{host}:{port}");
+    lookup_host(&target)
+        .await?
+        .next()
+        .ok_or_else(|| anyhow!("No addresses resolved for {target}"))
+}
+
 #[async_trait]
-impl InputServer for InputServerOptions<StubbornIo<TcpStream, String>> {
+impl InputServer for InputServerOptions<StubbornIo<TcpStream>> {
     async fn new(
         host: &str,
         port: u16,
         sender: Option<Sender<String>>,
         stats: Sender<u8>,
     ) -> Result<Self, Error> {
+        let addr = match resolve_host(host, port).await {
+            Ok(addr) => addr,
+            Err(e) => panic!("[TCP Input {host}:{port}] DNS resolution failed: {e}"),
+        };
+
         let stream = match StubbornTcpStream::connect_with_options(
-            format!("{host}:{port}"),
-            reconnect_options(format!("{host}:{port}").as_str()),
+            addr,
+            reconnect_options(&format!("{host}:{port}")),
         )
         .await
         {
@@ -83,11 +106,16 @@ impl InputServer for InputServerOptions<StubbornIo<TcpStream, String>> {
 }
 
 #[async_trait]
-impl OutputServer for OutputServerOptions<StubbornIo<TcpStream, String>> {
+impl OutputServer for OutputServerOptions<StubbornIo<TcpStream>> {
     async fn new(host: &str, port: u16, receiver: Receiver<String>) -> Result<Self, Error> {
-        let stream: StubbornIo<TcpStream, String> = match StubbornTcpStream::connect_with_options(
-            format!("{host}:{port}"),
-            reconnect_options(format!("{host}:{port}").as_str()),
+        let addr = match resolve_host(host, port).await {
+            Ok(addr) => addr,
+            Err(e) => panic!("[TCP Output {host}:{port}] DNS resolution failed: {e}"),
+        };
+
+        let stream: StubbornIo<TcpStream> = match StubbornTcpStream::connect_with_options(
+            addr,
+            reconnect_options(&format!("{host}:{port}")),
         )
         .await
         {
@@ -108,7 +136,7 @@ impl OutputServer for OutputServerOptions<StubbornIo<TcpStream, String>> {
 
     async fn watch_queue(mut self) {
         let name = self.format_name();
-        let mut writer: BufWriter<StubbornIo<TcpStream, String>> = BufWriter::new(self.socket);
+        let mut writer: BufWriter<StubbornIo<TcpStream>> = BufWriter::new(self.socket);
         while let Some(line) = self.receiver.recv().await {
             debug!("{name}Received: {line}");
 
@@ -143,8 +171,9 @@ impl OutputServer for OutputServerOptions<StubbornIo<TcpStream, String>> {
 }
 
 pub fn reconnect_options(host: &str) -> ReconnectOptions {
+    // `with_exit_if_first_connect_fails(false)` is the default in 0.7 and has
+    // been dropped from this builder chain accordingly.
     ReconnectOptions::new()
-        .with_exit_if_first_connect_fails(false)
         .with_retries_generator(get_our_standard_reconnect_strategy)
         .with_connection_name(host)
 }

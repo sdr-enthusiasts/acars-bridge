@@ -68,7 +68,7 @@ async fn main() -> Result<()> {
     info!("Creating input server");
     match SocketType::try_from(config.get_source_protocol()) {
         Ok(SocketType::Tcp) => {
-            let input_server = InputServerOptions::<StubbornIo<TcpStream, String>>::new(
+            let input_server = InputServerOptions::<StubbornIo<TcpStream>>::new(
                 config.get_source_host(),
                 config.get_source_port(),
                 input,
@@ -125,8 +125,7 @@ async fn main() -> Result<()> {
         match SocketType::try_from(proto) {
             Ok(SocketType::Tcp) => {
                 let output_server =
-                    OutputServerOptions::<StubbornIo<TcpStream, String>>::new(&host, port, output)
-                        .await?;
+                    OutputServerOptions::<StubbornIo<TcpStream>>::new(&host, port, output).await?;
 
                 tokio::spawn(async move {
                     output_server.watch_queue().await;
