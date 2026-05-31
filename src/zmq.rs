@@ -155,10 +155,14 @@ impl OutputServer for OutputServerOptions<Publish> {
             trace!("{}Message sent to consumer", self.format_name());
         }
 
-        Err(Error::msg(format!(
-            "{}Input channel closed",
+        // All bridge Senders have been dropped; this happens only during
+        // graceful shutdown. Return Ok(()) so the output supervisor treats it
+        // as a terminal, clean exit rather than a failure to restart.
+        info!(
+            "{}Input channel closed (shutdown); exiting",
             self.format_name()
-        )))
+        );
+        Ok(())
     }
 
     fn format_name(&self) -> String {

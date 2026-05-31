@@ -28,15 +28,17 @@ Every flag may also be supplied via the matching environment variable.
 
 ### Resilience
 
-Each side (input, output, stats) runs under its own supervisor task. If a side exits with an error it is restarted with exponential backoff (1s → 60s, reset after 60s of stable runtime). A graceful peer disconnect is not treated as an error and does not trigger a restart loop.
+Each side (input, output) runs under its own supervisor task, and stats runs as its own task. Behavior on exit:
+
+- **Input supervisor**: any inner exit (graceful peer close or error) triggers a reconnect with exponential backoff (1s → 60s, reset after 60s of stable runtime). Decoders may restart, and the bridge should reconnect to them automatically.
+- **Output supervisor**: an I/O error triggers a reconnect with the same exponential backoff. A graceful exit (only possible when the bridge channel has been closed during shutdown) is terminal — the supervisor does not restart.
 
 ### Graceful shutdown
 
 acars-bridge handles `SIGINT` (Ctrl-C) and `SIGTERM` with a coordinated drain:
 
-1. The shutdown signal is broadcast to all tasks.
-2. The input task is joined first so no new messages enter the bridge channel.
-3. The output task drains any remaining queued messages, then exits.
-4. The stats task flushes a final stats line and exits.
+1. The shutdown signal cancels the input supervisor; its current connection attempt or read loop is aborted, and it exits its loop without restarting.
+2. main joins the input supervisor, then drops its master clone of the bridge channel `Sender`. The output's `recv()` continues to return queued messages until the channel is empty, at which point it returns `None` and `watch_queue` exits with `Ok(())`. The output supervisor treats that as terminal and exits without restarting. The output supervisor's inner task is **not** cancelled by the shutdown signal, so buffered messages are not dropped.
+3. main joins the output supervisor, then drops its master clone of the stats channel `Sender`. The stats watcher's `recv()` returns `None` and it exits.
 
-The process then returns `0`. There is no shutdown timeout; if you need to force-exit, send a second signal and the runtime will abort.
+The process then returns `0`. There is no shutdown timeout; if you need to force-exit (for example, if the output is stuck mid-reconnect with messages still queued), send a second signal and the runtime will abort.

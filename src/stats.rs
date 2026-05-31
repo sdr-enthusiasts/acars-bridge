@@ -50,10 +50,12 @@ impl Stats {
             trace!("[STATS] Received message from queue");
             self.increment();
         }
-        // All Senders have been dropped. This should not happen under normal
-        // operation because main retains a master Sender, but if it does we
-        // exit cleanly instead of spinning on the closed channel.
-        warn!("[STATS] Stats channel closed (all senders dropped); exiting stats watcher");
+        // All Senders have been dropped. Under normal operation main retains
+        // a master Sender, so this only happens during graceful shutdown
+        // (main drops its Sender after the output supervisor exits). Logged
+        // at debug! to avoid emitting a false-positive warning on every
+        // clean exit.
+        debug!("[STATS] Stats channel closed (all senders dropped); exiting stats watcher");
     }
 
     fn increment(&self) {

@@ -136,11 +136,21 @@ fn spawn_input(
 /// the supervisor and borrowed mutably into `watch_queue` for each restart.
 /// Because the master `Sender<String>` lives in main, the receiver normally
 /// never sees a `None`. During shutdown, main drops its master Sender after
-/// the input supervisors exit, which lets the output drain naturally before
-/// receiving `None` and exiting.
+/// the input supervisor exits, which lets the output drain naturally before
+/// receiving `None` and returning `Ok(())` from `watch_queue`.
 ///
-/// On `cancel`, the supervisor aborts any in-flight inner task and exits its
-/// loop. The returned `JoinHandle` resolves once the supervisor has exited.
+/// Unlike `spawn_input`, the output supervisor does NOT include the cancel
+/// token in its inner `select!`. Aborting the inner task on cancel would
+/// drop any messages already buffered in the bridge channel. Instead,
+/// shutdown is driven by closing the channel: `recv()` returns `None`,
+/// `watch_queue` returns `Ok(())`, and the supervisor treats `Ok(())` as a
+/// terminal exit (no restart). The cancel token is still honored during the
+/// backoff sleep so a shutdown signal received while the output is between
+/// reconnect attempts breaks out promptly.
+///
+/// On an `Err` from `watch_queue` (real I/O failure) the supervisor restarts
+/// with exponential backoff. The returned `JoinHandle` resolves once the
+/// supervisor has exited.
 fn spawn_output(
     proto: SocketType,
     host: String,
@@ -154,40 +164,34 @@ fn spawn_output(
         while !cancel.is_cancelled() {
             let started = tokio::time::Instant::now();
 
-            let work = async {
-                match &proto {
-                    SocketType::Tcp => {
-                        let server =
-                            OutputServerOptions::<StubbornIo<TcpStream>>::new(&host, port).await?;
-                        server.watch_queue(&mut receiver).await
-                    }
-                    SocketType::Udp => {
-                        let server =
-                            OutputServerOptions::<tokio::net::UdpSocket>::new(&host, port).await?;
-                        server.watch_queue(&mut receiver).await
-                    }
-                    SocketType::Zmq => {
-                        let server = OutputServerOptions::<Publish>::new(&host, port).await?;
-                        server.watch_queue(&mut receiver).await
+            let result: Result<()> = match &proto {
+                SocketType::Tcp => {
+                    match OutputServerOptions::<StubbornIo<TcpStream>>::new(&host, port).await {
+                        Ok(server) => server.watch_queue(&mut receiver).await,
+                        Err(e) => Err(e),
                     }
                 }
-            };
-
-            let result: Option<Result<()>> = tokio::select! {
-                biased;
-                () = cancel.cancelled() => None,
-                r = work => Some(r),
+                SocketType::Udp => {
+                    match OutputServerOptions::<tokio::net::UdpSocket>::new(&host, port).await {
+                        Ok(server) => server.watch_queue(&mut receiver).await,
+                        Err(e) => Err(e),
+                    }
+                }
+                SocketType::Zmq => match OutputServerOptions::<Publish>::new(&host, port).await {
+                    Ok(server) => server.watch_queue(&mut receiver).await,
+                    Err(e) => Err(e),
+                },
             };
 
             match result {
-                None => {
-                    info!("[SUPERVISOR][{label}] Cancelled; exiting");
+                Ok(()) => {
+                    // Terminal exit: watch_queue only returns Ok(()) when the
+                    // bridge channel has been closed, which happens during
+                    // graceful shutdown. Do not restart.
+                    info!("[SUPERVISOR][{label}] Channel closed; exiting (no restart)");
                     break;
                 }
-                Some(Ok(())) => {
-                    info!("[SUPERVISOR][{label}] Task exited gracefully; restarting");
-                }
-                Some(Err(e)) => {
+                Err(e) => {
                     error!("[SUPERVISOR][{label}] Task failed: {e}; restarting");
                 }
             }
@@ -315,7 +319,7 @@ async fn main() -> Result<()> {
     // Wait for a shutdown signal.
     shutdown_signal().await;
 
-    info!("[SHUTDOWN] Cancelling supervisors");
+    info!("[SHUTDOWN] Cancelling input supervisor");
     cancel.cancel();
 
     // Drain order:
@@ -324,8 +328,12 @@ async fn main() -> Result<()> {
     //      via the cancel token, and its loop breaks before it can respawn.
     //   2. Drop the master bridge Sender. Now no Sender for the bridge
     //      channel exists; the output's recv() will return None once the
-    //      buffered messages are drained.
-    //   3. Wait for the output supervisor to drain and exit.
+    //      buffered messages are drained. The output supervisor does NOT
+    //      honor the cancel token inside its inner work (see spawn_output),
+    //      so the drain happens uninterrupted.
+    //   3. Wait for the output supervisor to drain and exit. watch_queue
+    //      returns Ok(()) on channel close and the supervisor treats that as
+    //      terminal (no restart).
     //   4. Drop the master stats Sender. The stats watcher's recv() will
     //      return None and it exits cleanly.
     if let Err(e) = input_handle.await {

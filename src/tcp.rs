@@ -164,8 +164,13 @@ impl OutputServer for OutputServerOptions<StubbornIo<TcpStream>> {
             trace!("{name}Flushed message to consumer");
         }
 
-        info!("{name}Queue is empty, shutting down");
-        Err(Error::msg(format!("{name}Input channel closed")))
+        // recv() returning None means all bridge Senders have been dropped,
+        // which happens only during graceful shutdown (main drops the master
+        // Sender after the input supervisor exits). Return Ok(()) so the
+        // output supervisor treats this as a terminal, clean exit rather than
+        // a failure to restart/log at error level.
+        info!("{name}Input channel closed (shutdown); exiting");
+        Ok(())
     }
 
     fn format_name(&self) -> String {
