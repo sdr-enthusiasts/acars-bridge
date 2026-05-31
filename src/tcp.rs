@@ -4,7 +4,7 @@
 // Permission is granted to use, copy, modify, and redistribute the work.
 // Full license information available in the project LICENSE file.
 
-use anyhow::{Error, Result, anyhow};
+use anyhow::{Context, Error, Result, anyhow};
 use async_trait::async_trait;
 use sdre_stubborn_io::ReconnectOptions;
 use sdre_stubborn_io::StubbornTcpStream;
@@ -34,11 +34,15 @@ use crate::serverconfig::OutputServerOptions;
 /// "bare `SocketAddr`" path explicitly called out as acceptable in the
 /// crate's 0.7.1 migration notes.
 async fn resolve_host(host: &str, port: u16) -> Result<SocketAddr, Error> {
-    let target = format!("{host}:{port}");
-    lookup_host(&target)
-        .await?
+    // Pass `(host, port)` as a tuple rather than formatting `"{host}:{port}"`
+    // so that bare IPv6 literals (`2001:db8::1`) don't need to be bracketed
+    // by the caller; the tuple form delegates parsing to tokio/std and
+    // handles DNS names, IPv4, and IPv6 uniformly.
+    lookup_host((host, port))
+        .await
+        .with_context(|| format!("DNS lookup failed for {host}:{port}"))?
         .next()
-        .ok_or_else(|| anyhow!("No addresses resolved for {target}"))
+        .ok_or_else(|| anyhow!("No addresses resolved for {host}:{port}"))
 }
 
 #[async_trait]
@@ -49,22 +53,16 @@ impl InputServer for InputServerOptions<StubbornIo<TcpStream>> {
         sender: Option<Sender<String>>,
         stats: Sender<u8>,
     ) -> Result<Self, Error> {
-        let addr = match resolve_host(host, port).await {
-            Ok(addr) => addr,
-            Err(e) => panic!("[TCP Input {host}:{port}] DNS resolution failed: {e}"),
-        };
+        let addr = resolve_host(host, port)
+            .await
+            .with_context(|| format!("[TCP Input {host}:{port}] DNS resolution failed"))?;
 
-        let stream = match StubbornTcpStream::connect_with_options(
+        let stream = StubbornTcpStream::connect_with_options(
             addr,
             reconnect_options(&format!("{host}:{port}")),
         )
         .await
-        {
-            Ok(stream) => stream,
-            Err(e) => {
-                panic!("[TCP Input {host}:{port}] Error connecting {e}");
-            }
-        };
+        .with_context(|| format!("[TCP Input {host}:{port}] initial connect failed"))?;
 
         // return self now
         Ok(Self {
@@ -76,7 +74,7 @@ impl InputServer for InputServerOptions<StubbornIo<TcpStream>> {
         })
     }
 
-    async fn receive_message(self) {
+    async fn receive_message(self) -> Result<(), Error> {
         let name = self.format_name();
         let reader = tokio::io::BufReader::new(self.socket);
         let mut lines = Framed::new(reader, LinesCodec::new());
@@ -85,19 +83,21 @@ impl InputServer for InputServerOptions<StubbornIo<TcpStream>> {
             debug!("{name}Received: {line}");
 
             if let Some(sender) = &self.sender {
-                match sender.send(line.clone()).await {
-                    Ok(()) => trace!("{name}Message sent to output channel"),
-                    Err(e) => panic!("{name}Error sending message to output channel: {e}"),
-                }
+                sender.send(line.clone()).await.with_context(|| {
+                    format!("{name}output channel closed; downstream task is gone")
+                })?;
+                trace!("{name}Message sent to output channel");
             }
 
-            match self.stats.send(1).await {
-                Ok(()) => trace!("{name}Stats sent to channel"),
-                Err(e) => panic!("{name}Error sending stats to channel: {e}"),
-            }
+            self.stats
+                .send(1)
+                .await
+                .with_context(|| format!("{name}stats channel closed"))?;
+            trace!("{name}Stats sent to channel");
         }
 
         info!("{name}Connection closed, shutting down");
+        Ok(())
     }
 
     fn format_name(&self) -> String {
@@ -108,22 +108,16 @@ impl InputServer for InputServerOptions<StubbornIo<TcpStream>> {
 #[async_trait]
 impl OutputServer for OutputServerOptions<StubbornIo<TcpStream>> {
     async fn new(host: &str, port: u16, receiver: Receiver<String>) -> Result<Self, Error> {
-        let addr = match resolve_host(host, port).await {
-            Ok(addr) => addr,
-            Err(e) => panic!("[TCP Output {host}:{port}] DNS resolution failed: {e}"),
-        };
+        let addr = resolve_host(host, port)
+            .await
+            .with_context(|| format!("[TCP Output {host}:{port}] DNS resolution failed"))?;
 
-        let stream: StubbornIo<TcpStream> = match StubbornTcpStream::connect_with_options(
+        let stream: StubbornIo<TcpStream> = StubbornTcpStream::connect_with_options(
             addr,
             reconnect_options(&format!("{host}:{port}")),
         )
         .await
-        {
-            Ok(stream) => stream,
-            Err(e) => {
-                panic!("[TCP Output {host}:{port}] Error connecting {e}");
-            }
-        };
+        .with_context(|| format!("[TCP Output {host}:{port}] initial connect failed"))?;
 
         // return self now
         Ok(Self {
@@ -134,7 +128,7 @@ impl OutputServer for OutputServerOptions<StubbornIo<TcpStream>> {
         })
     }
 
-    async fn watch_queue(mut self) {
+    async fn watch_queue(mut self) -> Result<(), Error> {
         let name = self.format_name();
         let mut writer: BufWriter<StubbornIo<TcpStream>> = BufWriter::new(self.socket);
         while let Some(line) = self.receiver.recv().await {
@@ -147,22 +141,21 @@ impl OutputServer for OutputServerOptions<StubbornIo<TcpStream>> {
                 format!("{line}\n")
             };
 
-            match writer.write(line.as_bytes()).await {
-                Ok(_) => {
-                    debug!("{name}Message sent to consumer");
+            writer
+                .write(line.as_bytes())
+                .await
+                .with_context(|| format!("{name}write to consumer failed"))?;
+            debug!("{name}Message sent to consumer");
 
-                    match writer.flush().await {
-                        Ok(()) => trace!("{name}Flushed message to consumer"),
-                        Err(e) => {
-                            panic!("{name}Error flushing message to consumer: {e}")
-                        }
-                    }
-                }
-                Err(e) => panic!("{name}Error sending message to consumer: {e}"),
-            }
+            writer
+                .flush()
+                .await
+                .with_context(|| format!("{name}flush to consumer failed"))?;
+            trace!("{name}Flushed message to consumer");
         }
 
         info!("{name}Queue is empty, shutting down");
+        Ok(())
     }
 
     fn format_name(&self) -> String {

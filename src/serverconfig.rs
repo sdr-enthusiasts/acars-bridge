@@ -79,7 +79,7 @@ pub trait InputServer {
     ) -> Result<Self, Error>
     where
         Self: Sized;
-    async fn receive_message(self);
+    async fn receive_message(self) -> Result<(), Error>;
     fn format_name(&self) -> String;
 }
 
@@ -88,6 +88,6 @@ pub trait OutputServer {
     async fn new(host: &str, port: u16, receiver: Receiver<String>) -> Result<Self, Error>
     where
         Self: Sized;
-    async fn watch_queue(self);
+    async fn watch_queue(self) -> Result<(), Error>;
     fn format_name(&self) -> String;
 }

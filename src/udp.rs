@@ -6,7 +6,7 @@ use crate::serverconfig::InputServerOptions;
 // Permission is granted to use, copy, modify, and redistribute the work.
 // Full license information available in the project LICENSE file.
 
-use anyhow::{Error, Result};
+use anyhow::{Context, Error, Result, anyhow};
 use async_trait::async_trait;
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -32,43 +32,38 @@ impl InputServer for InputServerOptions<UdpSocket> {
         })
     }
 
-    async fn receive_message(self) {
+    async fn receive_message(self) -> Result<(), Error> {
+        let name = self.format_name();
         let mut buf = [0; 8192];
         loop {
             match self.socket.recv_from(&mut buf).await {
                 Ok((size, _)) => {
                     if size == 0 {
-                        warn!("{}Received empty message", self.format_name());
+                        warn!("{name}Received empty message");
                         continue;
                     }
 
                     let composed_message = String::from_utf8_lossy(&buf[..size]);
 
-                    debug!("{}Received: {}", self.format_name(), composed_message);
+                    debug!("{name}Received: {composed_message}");
 
                     if let Some(sender) = &self.sender {
-                        match sender.send(composed_message.to_string()).await {
-                            Ok(()) => {
-                                trace!("{}Message sent to sender channel", self.format_name());
-                            }
-                            Err(e) => panic!(
-                                "{}Error sending message to sender channel: {}",
-                                self.format_name(),
-                                e
-                            ),
-                        }
+                        sender
+                            .send(composed_message.to_string())
+                            .await
+                            .with_context(|| {
+                                format!("{name}output channel closed; downstream task is gone")
+                            })?;
+                        trace!("{name}Message sent to sender channel");
                     }
 
-                    match self.stats.send(1).await {
-                        Ok(()) => trace!("{}Stats sent to stats channel", self.format_name()),
-                        Err(e) => panic!(
-                            "{}Error sending to stats channel: {}",
-                            self.format_name(),
-                            e
-                        ),
-                    }
+                    self.stats
+                        .send(1)
+                        .await
+                        .with_context(|| format!("{name}stats channel closed"))?;
+                    trace!("{name}Stats sent to stats channel");
                 }
-                Err(e) => error!("{}Error: {:?}", self.format_name(), e),
+                Err(e) => error!("{name}Error: {e:?}"),
             }
         }
     }
@@ -90,53 +85,50 @@ impl OutputServer for OutputServerOptions<UdpSocket> {
         })
     }
 
-    async fn watch_queue(mut self) {
+    async fn watch_queue(mut self) -> Result<(), Error> {
+        let name = self.format_name();
         let max_size = 8192;
 
         loop {
-            match self.receiver.recv().await {
-                Some(message) => {
-                    debug!("{}Received: {}", self.format_name(), message);
+            let Some(message) = self.receiver.recv().await else {
+                // Sender side of the input channel was dropped: the upstream
+                // task has exited, so the pipeline is broken. Surface as an
+                // error so main brings the whole process down.
+                return Err(anyhow!("{name}input channel closed; upstream task is gone"));
+            };
 
-                    // convert string to bytes
-                    // verify we have a newline
-                    let message = if message.ends_with('\n') {
-                        message
-                    } else {
-                        format!("{message}\n")
-                    };
-                    let bytes = message.as_bytes();
-                    // send bytes to destination. If the message is larger than the max size, send up to max size and keep sending until the entire message is sent.
-                    let mut offset = 0;
-                    while offset < bytes.len() {
-                        let end = std::cmp::min(offset + max_size, bytes.len());
+            debug!("{name}Received: {message}");
 
-                        match self
-                            .socket
-                            .send_to(&bytes[offset..end], format!("{}:{}", self.host, self.port))
-                            .await
-                        {
-                            Ok(_) => {
-                                trace!("{}Message sent to consumer", self.format_name(),);
-                                offset = end;
-                            }
-                            Err(e) => {
-                                // Other sender types panic at this point, but UDP is a best effort protocol, so we just log the error and continue
+            // convert string to bytes
+            // verify we have a newline
+            let message = if message.ends_with('\n') {
+                message
+            } else {
+                format!("{message}\n")
+            };
+            let bytes = message.as_bytes();
+            // send bytes to destination. If the message is larger than the max size, send up to max size and keep sending until the entire message is sent.
+            let mut offset = 0;
+            while offset < bytes.len() {
+                let end = std::cmp::min(offset + max_size, bytes.len());
 
-                                error!(
-                                    "{}Error sending message to consumer: {}",
-                                    self.format_name(),
-                                    e
-                                );
-                            }
-                        }
+                match self
+                    .socket
+                    .send_to(&bytes[offset..end], format!("{}:{}", self.host, self.port))
+                    .await
+                {
+                    Ok(_) => {
+                        trace!("{name}Message sent to consumer");
+                        offset = end;
                     }
-                }
-                None => {
-                    panic!(
-                        "{}Error receiving message from sender input channel",
-                        self.format_name()
-                    );
+                    Err(e) => {
+                        // Other sender types treat this as fatal, but UDP is a
+                        // best-effort protocol so we just log and continue.
+                        error!("{name}Error sending message to consumer: {e}");
+                        // Skip the rest of this message; if the network is
+                        // down we'll find out again on the next iteration.
+                        break;
+                    }
                 }
             }
         }
