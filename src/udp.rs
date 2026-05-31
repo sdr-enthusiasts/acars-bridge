@@ -136,62 +136,62 @@ impl OutputServer for OutputServerOptions<UdpSocket> {
         debug!("{}Resolved destination to {}", self.format_name(), dest);
 
         loop {
-            match receiver.recv().await {
-                Some(message) => {
-                    debug!("{}Received: {}", self.format_name(), message);
+            let Some(message) = receiver.recv().await else {
+                // All bridge Senders have been dropped; this happens only
+                // during graceful shutdown. Return Ok(()) so the output
+                // supervisor treats it as a terminal, clean exit.
+                info!(
+                    "{}Input channel closed (shutdown); exiting",
+                    self.format_name()
+                );
+                return Ok(());
+            };
+            debug!("{}Received: {}", self.format_name(), message);
 
-                    // verify we have a newline
-                    let message = if message.ends_with('\n') {
-                        message
-                    } else {
-                        format!("{message}\n")
-                    };
+            // verify we have a newline
+            let message = if message.ends_with('\n') {
+                message
+            } else {
+                format!("{message}\n")
+            };
 
-                    // Send the entire message as a single UDP datagram. The
-                    // kernel handles IP fragmentation transparently for
-                    // messages larger than the path MTU; the receiver's
-                    // kernel reassembles before delivery. The previous
-                    // application-level chunking produced multiple
-                    // independent datagrams that the receiver had no way to
-                    // recombine, silently corrupting any message > 8192
-                    // bytes.
-                    //
-                    // The hard ceiling here is the UDP payload max
-                    // (~65507 bytes); messages larger than that produce
-                    // EMSGSIZE, which we log and drop.
-                    let bytes = message.as_bytes();
-                    match self.socket.send_to(bytes, &dest).await {
-                        Ok(n) if n < bytes.len() => {
-                            // Per POSIX, a UDP send_to either transmits the
-                            // entire datagram or fails. A short return would
-                            // indicate a kernel anomaly worth flagging.
-                            warn!(
-                                "{}Short UDP send: {} of {} bytes",
-                                self.format_name(),
-                                n,
-                                bytes.len()
-                            );
-                        }
-                        Ok(_) => trace!("{}Message sent to consumer", self.format_name()),
-                        Err(e) => {
-                            // UDP is best-effort; log and continue. Common
-                            // causes: EMSGSIZE (oversized message),
-                            // ENETUNREACH, ICMP-driven errors from a prior
-                            // datagram.
-                            error!(
-                                "{}Error sending message ({} bytes) to consumer: {}",
-                                self.format_name(),
-                                bytes.len(),
-                                e
-                            );
-                        }
-                    }
+            // Send the entire message as a single UDP datagram. The
+            // kernel handles IP fragmentation transparently for
+            // messages larger than the path MTU; the receiver's
+            // kernel reassembles before delivery. The previous
+            // application-level chunking produced multiple
+            // independent datagrams that the receiver had no way to
+            // recombine, silently corrupting any message > 8192
+            // bytes.
+            //
+            // The hard ceiling here is the UDP payload max
+            // (~65507 bytes); messages larger than that produce
+            // EMSGSIZE, which we log and drop.
+            let bytes = message.as_bytes();
+            match self.socket.send_to(bytes, &dest).await {
+                Ok(n) if n < bytes.len() => {
+                    // Per POSIX, a UDP send_to either transmits the
+                    // entire datagram or fails. A short return would
+                    // indicate a kernel anomaly worth flagging.
+                    warn!(
+                        "{}Short UDP send: {} of {} bytes",
+                        self.format_name(),
+                        n,
+                        bytes.len()
+                    );
                 }
-                None => {
-                    return Err(Error::msg(format!(
-                        "{}Input channel closed",
-                        self.format_name()
-                    )));
+                Ok(_) => trace!("{}Message sent to consumer", self.format_name()),
+                Err(e) => {
+                    // UDP is best-effort; log and continue. Common
+                    // causes: EMSGSIZE (oversized message),
+                    // ENETUNREACH, ICMP-driven errors from a prior
+                    // datagram.
+                    error!(
+                        "{}Error sending message ({} bytes) to consumer: {}",
+                        self.format_name(),
+                        bytes.len(),
+                        e
+                    );
                 }
             }
         }
