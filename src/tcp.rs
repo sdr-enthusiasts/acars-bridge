@@ -4,7 +4,7 @@
 // Permission is granted to use, copy, modify, and redistribute the work.
 // Full license information available in the project LICENSE file.
 
-use anyhow::{Error, Result, anyhow};
+use anyhow::{Context, Error, Result, anyhow};
 use async_trait::async_trait;
 use sdre_stubborn_io::ReconnectOptions;
 use sdre_stubborn_io::StubbornTcpStream;
@@ -34,11 +34,15 @@ use crate::serverconfig::OutputServerOptions;
 /// "bare `SocketAddr`" path explicitly called out as acceptable in the
 /// crate's 0.7.1 migration notes.
 async fn resolve_host(host: &str, port: u16) -> Result<SocketAddr, Error> {
-    let target = format!("{host}:{port}");
-    lookup_host(&target)
-        .await?
+    // Pass `(host, port)` as a tuple rather than formatting `"{host}:{port}"`
+    // so that bare IPv6 literals (`2001:db8::1`) don't need to be bracketed
+    // by the caller; the tuple form delegates parsing to tokio/std and
+    // handles DNS names, IPv4, and IPv6 uniformly.
+    lookup_host((host, port))
+        .await
+        .with_context(|| format!("DNS lookup failed for {host}:{port}"))?
         .next()
-        .ok_or_else(|| anyhow!("No addresses resolved for {target}"))
+        .ok_or_else(|| anyhow!("No addresses resolved for {host}:{port}"))
 }
 
 #[async_trait]
@@ -49,10 +53,9 @@ impl InputServer for InputServerOptions<StubbornIo<TcpStream>> {
         sender: Option<Sender<String>>,
         stats: Sender<u8>,
     ) -> Result<Self, Error> {
-        let addr = match resolve_host(host, port).await {
-            Ok(addr) => addr,
-            Err(e) => panic!("[TCP Input {host}:{port}] DNS resolution failed: {e}"),
-        };
+        let addr = resolve_host(host, port)
+            .await
+            .with_context(|| format!("[TCP Input {host}:{port}] DNS resolution failed"))?;
 
         let stream = match StubbornTcpStream::connect_with_options(
             addr,
@@ -108,10 +111,9 @@ impl InputServer for InputServerOptions<StubbornIo<TcpStream>> {
 #[async_trait]
 impl OutputServer for OutputServerOptions<StubbornIo<TcpStream>> {
     async fn new(host: &str, port: u16, receiver: Receiver<String>) -> Result<Self, Error> {
-        let addr = match resolve_host(host, port).await {
-            Ok(addr) => addr,
-            Err(e) => panic!("[TCP Output {host}:{port}] DNS resolution failed: {e}"),
-        };
+        let addr = resolve_host(host, port)
+            .await
+            .with_context(|| format!("[TCP Output {host}:{port}] DNS resolution failed"))?;
 
         let stream: StubbornIo<TcpStream> = match StubbornTcpStream::connect_with_options(
             addr,
