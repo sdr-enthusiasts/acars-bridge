@@ -41,4 +41,4 @@ acars-bridge handles `SIGINT` (Ctrl-C) and `SIGTERM` with a coordinated drain:
 2. main joins the input supervisor, then drops its master clone of the bridge channel `Sender`. The output's `recv()` continues to return queued messages until the channel is empty, at which point it returns `None` and `watch_queue` exits with `Ok(())`. The output supervisor treats that as terminal and exits without restarting. The output supervisor's inner task is **not** cancelled by the shutdown signal, so buffered messages are not dropped.
 3. main joins the output supervisor, then drops its master clone of the stats channel `Sender`. The stats watcher's `recv()` returns `None` and it exits.
 
-The process then returns `0`. There is no shutdown timeout; if you need to force-exit (for example, if the output is stuck mid-reconnect with messages still queued), send a second signal and the runtime will abort.
+The process then returns `0`. There is no shutdown timeout and no second-signal force-abort handler; if you need to force-exit (for example, if the output is stuck mid-reconnect with messages still queued), send `SIGQUIT` (Ctrl-\\) or `SIGKILL`.

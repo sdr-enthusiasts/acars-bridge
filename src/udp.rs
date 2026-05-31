@@ -108,7 +108,10 @@ impl OutputServer for OutputServerOptions<UdpSocket> {
         // fail fast (and let the supervisor back off + retry) rather than
         // discovering it on the first datagram. The resolved address is
         // recomputed once in watch_queue and reused for every send_to.
-        resolve_first(format!("{host}:{port}"))
+        // Pass `(host, port)` as a tuple rather than formatting
+        // `"{host}:{port}"` so bare IPv6 literals (`2001:db8::1`) don't need
+        // to be bracketed by the caller.
+        resolve_first((host, port))
             .await
             .map_err(|e| Error::msg(format!("[UDP Output {host}:{port}] Cannot resolve: {e}")))?;
         Ok(Self {
@@ -123,8 +126,9 @@ impl OutputServer for OutputServerOptions<UdpSocket> {
         // host:port string to send_to on every datagram, which forced DNS
         // resolution per call. Resolving once at task start eliminates that
         // overhead; the supervisor will rebuild this task (and re-resolve)
-        // on any send failure or restart.
-        let dest = resolve_first(format!("{}:{}", self.host, self.port))
+        // on any send failure or restart. The tuple form supports bare IPv6
+        // literals without requiring the caller to bracket them.
+        let dest = resolve_first((self.host.as_str(), self.port))
             .await
             .map_err(|e| {
                 Error::msg(format!(
