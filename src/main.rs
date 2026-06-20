@@ -114,7 +114,7 @@ fn spawn_input(
                 }
             }
 
-            if started.elapsed() >= Duration::from_secs(60) {
+            if started.elapsed() >= Duration::from_mins(1) {
                 backoff_secs = 1;
             }
 
@@ -196,7 +196,7 @@ fn spawn_output(
                 }
             }
 
-            if started.elapsed() >= Duration::from_secs(60) {
+            if started.elapsed() >= Duration::from_mins(1) {
                 backoff_secs = 1;
             }
 
