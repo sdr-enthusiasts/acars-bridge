@@ -1,6 +1,6 @@
 [package]
 name = "acars-bridge"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 rust-version = "1.91"
 
@@ -11,9 +11,9 @@ anyhow = "1.0.102"
 async-trait = "0.1.89"
 clap = { version = "4.6.1", features = ["derive", "env"] }
 futures = "0.3.32"
-log = "0.4.30"
-sdre-rust-logging = "0.3.27"
-sdre-stubborn-io = "0.7.1"
+log = "0.4.32"
+sdre-rust-logging = "0.3.28"
+sdre-stubborn-io = "0.7.2"
 tmq = "0.5.0"
 tokio = { version = "1.52.3", features = ["full", "tracing"] }
 tokio-stream = "0.1.18"
