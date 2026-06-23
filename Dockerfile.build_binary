@@ -1,4 +1,4 @@
-FROM rust:1.93.1-bullseye@sha256:fae8ebcb8eda28d37df2b965c87c15a572dac2b6d3893a72d6dea99d700d1786 AS builder
+FROM rust:1.96.0-bullseye@sha256:e12c121572a8e557ce164e10755da72047be5b689edb5ae617a6a5d37683a0fc AS builder
 ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 WORKDIR /tmp/acars-bridge
 
