@@ -14,6 +14,12 @@ jobs:
       ghcr_repo_owner: ${{ github.repository_owner }}
       ghcr_repo: ${{ github.repository }}
       docker_build_file: Dockerfile.build_binary
+      # Dockerfile.build_binary is a build environment, not a runnable service
+      # container: its final stage is FROM scratch holding only the compiled
+      # binary, which other images COPY out. There is no s6-overlay, no service
+      # graph, and no runtime to assert anything about, so the verification is
+      # not applicable here rather than merely inconvenient.
+      verify_s6_enabled: false
     secrets:
       ghcr_token: ${{ secrets.GITHUB_TOKEN }}
 
